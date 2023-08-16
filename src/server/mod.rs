@@ -3,6 +3,7 @@ use crate::util::error::KPGError;
 
 pub mod api;
 pub mod media_server;
+pub mod controller;
 
 pub struct ServerContext {
     pub name: String,

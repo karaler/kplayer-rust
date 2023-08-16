@@ -36,13 +36,13 @@ impl KPGMediaServer {
         }
     }
 
-    pub fn add_rtmp(&mut self, name: String, address: String, port: u32, token: ServerTokenType) -> Result<(), KPGError> {
+    pub fn add_rtmp(&mut self, name: String, address: String, port: u16, token: ServerTokenType) -> Result<(), KPGError> {
         let actual_port = match token.clone() {
             ServerTokenType::SingleToken { .. } => {
                 return Err(KPGError::new_with_string(KPGServerMediaServerEnableSchemaFailed, format!("mismatch token type on the schema: rtmp, address: {}, port: {}, token: {}", address, port, token)));
             }
             ServerTokenType::CSToken { server, client } => {
-                self.media_server.add_rtmp(name.clone(), address.clone(), port.clone(), server, client).map_err(|err| {
+                self.media_server.add_rtmp(name.clone(), address.clone(), port.clone() as u32, server, client).map_err(|err| {
                     KPGError::new_with_string(KPGServerMediaServerEnableSchemaFailed, format!("schema: rtmp, address: {}, port: {}, error: {}", address, port, err))
                 })?
             }
@@ -60,10 +60,10 @@ impl KPGMediaServer {
         Ok(())
     }
 
-    pub fn add_http(&mut self, name: String, address: String, port: u32, token: ServerTokenType) -> Result<(), KPGError> {
+    pub fn add_http(&mut self, name: String, address: String, port: u16, token: ServerTokenType) -> Result<(), KPGError> {
         let actual_port = match token.clone() {
             ServerTokenType::SingleToken { token } => {
-                self.media_server.add_http(name.clone(), address.clone(), port.clone(), token).map_err(|err| {
+                self.media_server.add_http(name.clone(), address.clone(), port.clone() as u32, token).map_err(|err| {
                     KPGError::new_with_string(KPGServerMediaServerEnableSchemaFailed, format!("schema: rtmp, address: {}, port: {}, error: {}", address, port, err))
                 })?
             }

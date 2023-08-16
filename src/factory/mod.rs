@@ -1,3 +1,5 @@
+pub mod playlist;
+
 use std::collections::HashMap;
 use std::fmt::format;
 use std::fs::File;
@@ -5,8 +7,10 @@ use std::io::Read;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{Receiver, sync_channel, SyncSender};
 use std::thread::JoinHandle;
+use bus::BusReader;
 use libkplayer::bindings::{AVCodecID_AV_CODEC_ID_H264, exit};
 use libkplayer::codec::component::filter::KPFilter;
 use libkplayer::codec::component::media::KPMedia;
@@ -14,10 +18,12 @@ use libkplayer::codec::playlist::{KPPlayList, PlayModel};
 use libkplayer::codec::transform::KPTransform;
 use libkplayer::plugin::plugin::KPPlugin;
 use libkplayer::server::media_pusher::KPMediaPusher;
+use libkplayer::subscribe_message;
 use libkplayer::util::error::KPError;
 use libkplayer::util::kpcodec::avmedia_type::KPAVMediaType;
 use libkplayer::util::kpcodec::kpencode_parameter::{KPEncodeParameterItem, KPEncodeParameterItemPreset, KPEncodeParameterItemProfile};
-use log::{info, warn};
+use libkplayer::util::message::{KPMessage, MessageAction};
+use log::{debug, error, info, warn};
 use crate::config::{OutputType, Playlist, ResourceType, Root, ServerSchema, ServerType};
 use crate::config::env::get_homedir;
 use crate::server::api::{KPGApi};
@@ -27,6 +33,7 @@ use crate::util::error::KPGError;
 use crate::util::error::KPGErrorCode::*;
 use crate::util::file::read_directory_file;
 use crate::util::rand::rand_string;
+use crate::util::time::KPDuration;
 
 const PLUGIN_DIRECTORY: &str = "plugin/";
 const PLUGIN_EXTENSION: &str = ".kpe";
@@ -54,10 +61,28 @@ pub struct KPGFactory {
     thread_result: HashMap<ThreadResult, Option<Result<(), KPGError>>>,
     exit_channel_sender: SyncSender<(ThreadResult, Result<(), KPGError>)>,
     exit_channel_receiver: Receiver<(ThreadResult, Result<(), KPGError>)>,
+
+    // state
+    is_created: Arc<Mutex<bool>>,
 }
 
 impl KPGFactory {
-    pub fn create(cfg: Root) -> Result<KPGFactory, KPGError> {
+    pub fn new() -> KPGFactory {
+        let (exit_sender, exit_receiver) = sync_channel(1);
+        return KPGFactory {
+            playlist: Default::default(),
+            scene: Default::default(),
+            output: Default::default(),
+            server: Default::default(),
+            instance: Default::default(),
+            thread_result: Default::default(),
+            exit_channel_sender: exit_sender,
+            exit_channel_receiver: exit_receiver,
+            is_created: Arc::new(Mutex::new(false)),
+        };
+    }
+
+    pub fn create(&mut self, cfg: Root) -> Result<(), KPGError> {
         // load playlist
         let playlist = {
             let mut load_playlist = HashMap::new();
@@ -83,7 +108,7 @@ impl KPGFactory {
                                 playlist.add_media(media).map_err(|err| {
                                     KPGError::new_with_string(KPGFactoryParseConfigFailed, format!("add media to playlist failed. playlist: {}, media: {}, error: {}", pl.name, path, err))
                                 })?;
-                                info!("add media to playlist success. playlist: {}, media: {}, duration: {}", pl.name,path, duration);
+                                info!("add media to playlist success. playlist: {}, media: {}, duration: {:?}", pl.name,path, KPDuration::new(duration));
                             }
                         }
                         ResourceType::ResourceDirectory { directory, extension } => {
@@ -96,7 +121,7 @@ impl KPGFactory {
                                     playlist.add_media(media).map_err(|err| {
                                         KPGError::new_with_string(KPGFactoryParseConfigFailed, format!("add media to playlist failed. playlist: {}, media: {}, error: {}", pl.name, file, err))
                                     })?;
-                                    info!("add media to playlist success. playlist: {}, media: {}, duration: {}, directory: {}", pl.name,file, duration, directory);
+                                    info!("add media to playlist success. playlist: {}, media: {}, duration: {:?}, from directory: {}", pl.name,file, KPDuration::new(duration), directory);
                                 }
                             }
                         }
@@ -113,10 +138,11 @@ impl KPGFactory {
                             if let Err(err) = media.open() {
                                 warn!("add media to playlist failed. playlist: {}, media: {}, error: {}", pl.name,path,err)
                             } else {
+                                let duration = media.get_duration();
                                 playlist.add_media(media).map_err(|err| {
                                     KPGError::new_with_string(KPGFactoryParseConfigFailed, format!("add media to playlist failed. playlist: {}, media: {}, error: {}", pl.name, path, err))
                                 })?;
-                                info!("add media to playlist success. playlist: {}, media: {}, seek: {:?}, end: {:?}", pl.name,path,seek,end);
+                                info!("add media to playlist success. playlist: {}, media: {}, duration: {:?}, seek: {:?}, end: {:?}", pl.name,path,KPDuration::new(duration),seek,end);
                             }
                         }
                     }
@@ -160,15 +186,26 @@ impl KPGFactory {
                                 ServerSchema::Http => {
                                     media_server.add_http(g.name, g.address, g.port, g.token)?;
                                 }
-                                _ => {}
+                                _ => {
+                                    return Err(KPGError::new_with_string(KPGFactoryParseConfigFailed, format!("not support media server schema. schema: {}", g.schema)));
+                                }
                             };
                         }
-                        info!("create server success. type: {}, server: {}",srv.target, srv.name);
-                        servers.insert(srv.name, Arc::new(Mutex::new(Box::new(media_server))));
+                        info!("create media server success. type: {}, server: {}",srv.target, srv.name);
+                        servers.insert(srv.name.clone(), Arc::new(Mutex::new(Box::new(media_server))));
                     }
                     ServerType::Api => {
-                        info!("create server success. type: {}, server: {}",srv.target, srv.name);
-                        servers.insert(srv.name, Arc::new(Mutex::new(Box::new(KPGApi::new()))));
+                        for g in srv.group {
+                            match g.schema {
+                                ServerSchema::Http => {
+                                    servers.insert(srv.name.clone(), Arc::new(Mutex::new(Box::new(KPGApi::new(g.address.clone(), g.port.clone())))));
+                                    info!("create api server success. type: {}, server: {}, address: {}, port: {}",srv.target, srv.name, g.address,g.port);
+                                }
+                                _ => {
+                                    return Err(KPGError::new_with_string(KPGFactoryParseConfigFailed, format!("not support api server schema. schema: {}", g.schema)));
+                                }
+                            };
+                        }
                     }
                 };
             };
@@ -332,18 +369,16 @@ impl KPGFactory {
             outputs
         };
 
-        let (exit_sender, exit_receiver) = sync_channel(1);
-        let factory = KPGFactory {
-            playlist,
-            scene,
-            output,
-            server,
-            instance,
-            thread_result: HashMap::new(),
-            exit_channel_sender: exit_sender,
-            exit_channel_receiver: exit_receiver,
-        };
-        Ok(factory)
+        self.playlist = playlist;
+        self.scene = scene;
+        self.output = output;
+        self.server = server;
+        self.instance = instance;
+        {
+            let mut is_created = self.is_created.lock().unwrap();
+            *is_created = true;
+        }
+        Ok(())
     }
 
     pub fn launch_server(&mut self) {
@@ -379,7 +414,7 @@ impl KPGFactory {
             };
             assert!(!self.thread_result.contains_key(&thread_result));
             self.thread_result.insert(thread_result.clone(), None);
-            info!("launch server. thread result: {:?}", thread_result);
+            info!("launch instance. thread result: {:?}", thread_result);
 
             std::thread::spawn(move || {
                 let mut get_transform = transform_clone.lock().unwrap();
@@ -396,6 +431,30 @@ impl KPGFactory {
                 exit_sender_clone.send((thread_result, exit_result)).unwrap();
             });
         }
+    }
+
+    pub fn launch_message_bus(&mut self) {
+        let exit_sender_clone = self.exit_channel_sender.clone();
+        let thread_result = ThreadResult {
+            thread_name: "message_bus".to_string(),
+            thread_type: ThreadType::Instance,
+        };
+
+        let self_is_created = self.is_created.clone();
+        std::thread::spawn(move || {
+            let mut is_created = false;
+            for item in subscribe_message().iter() {
+                if !is_created {
+                    is_created = self_is_created.lock().unwrap().clone();
+                }
+                if is_created {
+                    info!("receive subscribe message. action: {}, message: {}", item.action,item.message);
+                } else {
+                    debug!("receive subscribe message. action: {}, message: {}", item.action,item.message);
+                }
+            }
+            exit_sender_clone.send((thread_result, Ok(()))).unwrap();
+        });
     }
 
     pub fn wait(&mut self) -> Result<ThreadResult, Result<(), KPGError>> {

@@ -18,6 +18,7 @@ pub enum KPGErrorCode {
     KPGServerMediaServerStartFailed,
     KPGServerMediaServerStopFailed,
     KPGUtilReadDirectoryFailed,
+    KPGAPIServerBindFailed,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]

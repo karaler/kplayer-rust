@@ -8,14 +8,15 @@ use libkplayer::util::error::KPError;
 use libkplayer::util::kpcodec::kpencode_parameter::{KPEncodeParameterItem};
 use libkplayer::util::logger::LogLevel;
 use uuid::Uuid;
-use crate::config::parse_file;
+use crate::config::{parse_file, Root};
 use crate::factory::{KPGFactory, ThreadResult};
 use crate::util::error::KPGError;
 use crate::util::error::KPGErrorCode::*;
-use log::{LevelFilter, info, Level};
+use log::{LevelFilter, info, Level, error};
 use std::{io, time::SystemTime};
 use std::collections::HashMap;
 use std::fs::metadata;
+use std::time::Duration;
 
 pub mod config;
 pub mod util;
@@ -23,16 +24,31 @@ pub mod factory;
 pub mod server;
 
 fn main() {
-    setup_log(LevelFilter::Trace);
+    setup_log(LevelFilter::Info);
 
     // load config
-    let cfg = parse_file().expect("load config failed");
+    let cfg = match parse_file() {
+        Ok(cfg) => cfg,
+        Err(err) => {
+            error!("parse config file failed. {}",err);
+            return;
+        }
+    };
 
     // initialize factory
-    let mut factory = KPGFactory::create(cfg).expect("create factory failed");
+    let mut factory = KPGFactory::new();
+
+    // connect message bus
+    factory.launch_message_bus();
+
+    // create item from config
+    factory.create(cfg).expect("create factory failed");
+
+    // launch server items
     factory.launch_server();
     factory.launch_instance();
 
+    // wait quit signal
     loop {
         match factory.wait() {
             Ok(_) => {
@@ -78,7 +94,7 @@ fn setup_log(level: LevelFilter) {
     fern::Dispatch::new().
         format(move |out, message, record| {
             out.finish(format_args!(
-                "{color_line}[{date} {level} {target} {color_line}] {message}\x1B[0m",
+                "{color_line}[{date} {level} {target} {color_line}] \x1B[90m{message}\x1B[0m",
                 color_line = format_args!(
                     "\x1B[{}m",
                     colors_line.get_color(&record.level()).to_fg_str()

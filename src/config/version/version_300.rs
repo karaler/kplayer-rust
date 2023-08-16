@@ -199,7 +199,7 @@ impl ParseConfig for Version300 {
                                     return Err(KPGError::new_with_str(KPGConfigParseFailed, "server group port can not be empty"));
                                 }
                                 Some(val) => {
-                                    val.as_i64().ok_or(KPGError::new_with_str(KPGConfigParseFailed, "server group port invalid json format"))? as u32
+                                    val.as_i64().ok_or(KPGError::new_with_str(KPGConfigParseFailed, "server group port invalid json format"))? as u16
                                 }
                             };
                             group.token = match srv.target {

@@ -5,6 +5,7 @@ use std::path::Path;
 use std::sync::mpsc::RecvError;
 use enum_display::EnumDisplay;
 use libkplayer::codec::playlist::KPPlayList;
+use log::info;
 use serde::{Deserialize, Serialize};
 use uuid::Version;
 use crate::config::version::ParseConfig;
@@ -143,7 +144,7 @@ pub struct Server {
 #[serde(rename_all = "camelCase")]
 pub struct ServerGroup {
     pub name: String,
-    pub port: u32,
+    pub port: u16,
     pub address: String,
     pub token: ServerTokenType,
     pub schema: ServerSchema,
@@ -266,6 +267,7 @@ pub fn parse_file() -> Result<Root, KPGError> {
     })?;
 
 
+    // @TODO 多版本配置文件适配
     let get_version = "3.0.0";
     let version = {
         let version_300: Box<dyn ParseConfig> = Box::new(Version300::default());
@@ -276,7 +278,7 @@ pub fn parse_file() -> Result<Root, KPGError> {
     {
         let file_context = String::from_utf8(buf).unwrap();
         let serde_json_parsed: serde_json::Value = json5::from_str(file_context.as_str()).map_err(|err| {
-            KPGError::new_with_string(KPGConfigFileOpenFailed, format!("parse json5 format failed. path: {:?}, error: {:?}", path, err))
+            KPGError::new_with_string(KPGConfigFileOpenFailed, format!("parse json5 format failed. path: {:?}, error: \n{}", path, err))
         })?;
         buf = serde_json_parsed.to_string().into_bytes();
     }
