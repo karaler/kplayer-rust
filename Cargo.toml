@@ -1,0 +1,25 @@
+[package]
+name = "kplayer-go"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = true
+
+[dependencies]
+enum-display = "0.1.3"
+libkplayer = { path = "../libkplayer" }
+serde = "1.0.173"
+serde_yaml = "0.9.24"
+serde_json = "1.0.103"
+log = "0.4.19"
+uuid = { version = "1.4.1", features = ["v4", "fast-rng"] }
+md5 = "0.7.0"
+hex = "0.4.3"
+rand = "0.8.5"
+json5 = "0.4.1"
+fern = { version = "0.6.2", features = ["colored","chrono"] }
+humantime = "2.1.0"
