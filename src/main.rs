@@ -9,19 +9,26 @@ use libkplayer::util::kpcodec::kpencode_parameter::{KPEncodeParameterItem};
 use libkplayer::util::logger::LogLevel;
 use uuid::Uuid;
 use crate::config::{parse_file, Root};
-use crate::factory::{KPGFactory, ThreadResult};
+use crate::factory::{KPGFactory, ThreadResult, ThreadType};
 use crate::util::error::KPGError;
 use crate::util::error::KPGErrorCode::*;
 use log::{LevelFilter, info, Level, error};
 use std::{io, time::SystemTime};
 use std::collections::HashMap;
 use std::fs::metadata;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use lazy_static::lazy_static;
 
 pub mod config;
 pub mod util;
 pub mod factory;
 pub mod server;
+
+lazy_static! {
+    static ref GLOBAL_FACTORY: Arc<Mutex<KPGFactory>> = Arc::new(Mutex::new(KPGFactory::new()));
+}
+
 
 fn main() {
     setup_log(LevelFilter::Info);
@@ -35,36 +42,70 @@ fn main() {
         }
     };
 
-    // initialize factory
-    let mut factory = KPGFactory::new();
+    // initialize
+    // thread_result_map(receive thread result, is_return)
+    let mut thread_result_map: HashMap<ThreadResult, bool> = HashMap::new();
+    let exit_receiver = {
+        let mut factory = GLOBAL_FACTORY.lock().unwrap();
 
-    // connect message bus
-    factory.launch_message_bus();
+        // connect message bus
+        factory.launch_message_bus();
 
-    // create item from config
-    factory.create(cfg).expect("create factory failed");
+        // create item from config
+        factory.create(cfg).expect("create factory failed");
 
-    // launch server items
-    factory.launch_server();
-    factory.launch_instance();
+        // launch threads
+        {
+            for name in factory.get_server_list().iter() {
+                let thread_result = factory.launch_server(name).expect("launch server failed");
+                thread_result_map.insert(thread_result, false);
+            }
+            for name in factory.get_instance_list().iter() {
+                let thread_result = factory.launch_instance(name).expect("launch instance failed");
+                thread_result_map.insert(thread_result, false);
+            }
+        }
+
+        factory.get_exit_receiver()
+    };
 
     // wait quit signal
     loop {
-        match factory.wait() {
-            Ok(_) => {
-                let mut need_break = true;
-                for (_, value) in factory.check_instance_survival() {
-                    if value {
-                        need_break = false;
-                    }
+        match exit_receiver.lock().unwrap().recv() {
+            Ok((thread_result, result)) => {
+                info!("thread exit result: {:?}",thread_result);
+                if result.is_err() {
+                    panic!("thread exit exception. err: {:?}", result);
                 }
+                match thread_result_map.clone().get_mut(&thread_result) {
+                    None => {
+                        panic!("thread not register. thread_result: {:?}", thread_result);
+                    }
+                    Some(status) => {
+                        if *status {
+                            panic!("thread duplicate notice. thread_result: {:?}", thread_result);
+                        }
+                        *status = true;
+                    }
+                };
 
-                if need_break {
-                    break;
+                // exit condition
+                {
+                    let viable_instance: Vec<bool> = thread_result_map.iter().map(|(filter_thread_result, filter_result)| {
+                        filter_thread_result.thread_type == ThreadType::Instance && !*filter_result
+                    }).collect();
+                    if viable_instance.len() == 0 {
+                        break;
+                    }
+
+                    // api thread exit
+                    if thread_result.thread_type == ThreadType::Server {
+                        break;
+                    }
                 }
             }
             Err(err) => {
-                err.expect("thread result receive exception")
+                panic!("exit receiver failed. err: {}", err);
             }
         }
     }

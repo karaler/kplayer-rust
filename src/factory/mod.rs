@@ -50,8 +50,8 @@ pub enum ThreadType {
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct ThreadResult {
-    thread_name: String,
-    thread_type: ThreadType,
+    pub thread_name: String,
+    pub thread_type: ThreadType,
 }
 
 pub struct KPGFactory {
@@ -62,9 +62,8 @@ pub struct KPGFactory {
     instance: HashMap<String, Arc<Mutex<KPTransform>>>,
 
     // thread
-    thread_result: HashMap<ThreadResult, Option<Result<(), KPGError>>>,
     exit_channel_sender: SyncSender<(ThreadResult, Result<(), KPGError>)>,
-    exit_channel_receiver: Receiver<(ThreadResult, Result<(), KPGError>)>,
+    exit_channel_receiver: Arc<Mutex<Receiver<(ThreadResult, Result<(), KPGError>)>>>,
 
     // state
     is_created: Arc<Mutex<bool>>,
@@ -79,9 +78,8 @@ impl KPGFactory {
             output: Default::default(),
             server: Default::default(),
             instance: Default::default(),
-            thread_result: Default::default(),
             exit_channel_sender: exit_sender,
-            exit_channel_receiver: exit_receiver,
+            exit_channel_receiver: Arc::new(Mutex::new(exit_receiver)),
             is_created: Arc::new(Mutex::new(false)),
         };
     }
@@ -101,56 +99,73 @@ impl KPGFactory {
         Ok(())
     }
 
-    pub fn launch_server(&mut self) {
-        for (name, server) in &self.server {
-            let server_clone = server.clone();
-            let exit_sender_clone = self.exit_channel_sender.clone();
-
-            let thread_result = ThreadResult {
-                thread_name: name.clone(),
-                thread_type: ThreadType::Server,
-            };
-            assert!(!self.thread_result.contains_key(&thread_result));
-            self.thread_result.insert(thread_result.clone(), None);
-            info!("launch server. thread result: {:?}", thread_result);
-
-            std::thread::spawn(move || {
-                let mut get_server = server_clone.lock().unwrap();
-                let result = get_server.start();
-                exit_sender_clone.send((thread_result, result.clone())).unwrap();
-            });
+    pub fn get_server_list(&self) -> Vec<String> {
+        let mut server_name = Vec::new();
+        for (name, _) in &self.server {
+            server_name.push(name.clone());
         }
+
+        server_name
     }
 
-    pub fn launch_instance(&mut self) {
-        for (name, transform) in &self.instance {
-            let transform_clone = transform.clone();
-            let name_clone = name.clone();
-            let exit_sender_clone = self.exit_channel_sender.clone();
+    pub fn launch_server(&mut self, name: &String) -> Result<ThreadResult, KPGError> {
+        let server = self.server.get(name).unwrap();
+        let server_clone = server.clone();
+        let exit_sender_clone = self.exit_channel_sender.clone();
 
-            let thread_result = ThreadResult {
-                thread_name: name.clone(),
-                thread_type: ThreadType::Instance,
-            };
-            assert!(!self.thread_result.contains_key(&thread_result));
-            self.thread_result.insert(thread_result.clone(), None);
-            info!("launch instance. thread result: {:?}", thread_result);
+        let thread_result = ThreadResult {
+            thread_name: name.clone(),
+            thread_type: ThreadType::Server,
+        };
 
-            std::thread::spawn(move || {
-                let mut get_transform = transform_clone.lock().unwrap();
-                let name = get_transform.get_name();
-                let result = get_transform.launch(None);
-                let exit_result = match result {
-                    Ok(_) => {
-                        Ok(())
-                    }
-                    Err(err) => {
-                        Err(KPGError::new_with_string(KPGInstanceLaunchFailed, format!("instance launch failed. name: {}, error: {}", name, err)))
-                    }
-                };
-                exit_sender_clone.send((thread_result, exit_result)).unwrap();
-            });
+        info!("launch server. thread result: {:?}", thread_result);
+        let thread_result_clone = thread_result.clone();
+        std::thread::spawn(move || {
+            let mut get_server = server_clone.lock().unwrap();
+            let result = get_server.start();
+            exit_sender_clone.send((thread_result_clone, result.clone())).unwrap();
+        });
+
+        Ok(thread_result)
+    }
+
+    pub fn get_instance_list(&self) -> Vec<String> {
+        let mut instance_name = Vec::new();
+        for (name, _) in self.instance.iter() {
+            instance_name.push(name.clone());
         }
+
+        instance_name
+    }
+
+    pub fn launch_instance(&mut self, name: &String) -> Result<ThreadResult, KPGError> {
+        let transform = self.instance.get(name).unwrap();
+        let transform_clone = transform.clone();
+        let exit_sender_clone = self.exit_channel_sender.clone();
+
+        let thread_result = ThreadResult {
+            thread_name: name.clone(),
+            thread_type: ThreadType::Instance,
+        };
+        info!("launch instance. thread result: {:?}", thread_result);
+
+        let thread_result_clone = thread_result.clone();
+        std::thread::spawn(move || {
+            let mut get_transform = transform_clone.lock().unwrap();
+            let name = get_transform.get_name();
+            let result = get_transform.launch(None);
+            let exit_result = match result {
+                Ok(_) => {
+                    Ok(())
+                }
+                Err(err) => {
+                    Err(KPGError::new_with_string(KPGInstanceLaunchFailed, format!("instance launch failed. name: {}, error: {}", name, err)))
+                }
+            };
+            exit_sender_clone.send((thread_result_clone, exit_result)).unwrap();
+        });
+
+        Ok(thread_result)
     }
 
     pub fn launch_message_bus(&mut self) {
@@ -177,35 +192,8 @@ impl KPGFactory {
         });
     }
 
-    pub fn wait(&mut self) -> Result<ThreadResult, Result<(), KPGError>> {
-        let (thread_result, result) = self.exit_channel_receiver.recv().unwrap();
-        self.thread_result.insert(thread_result.clone(), Some(result.clone()));
-
-        let wait_items: Vec<_> = self.thread_result.iter().filter(|(thread_result, item)| {
-            thread_result.thread_type == ThreadType::Instance && item.is_none()
-        }).collect();
-        if wait_items.is_empty() {
-            return Ok(thread_result);
-        }
-
-        Err(result.clone())
-    }
-
-    pub fn check_instance_survival(&self) -> HashMap<String, bool> {
-        let mut instance_state = HashMap::new();
-
-        for (key, instance) in &self.instance {
-            match instance.try_lock() {
-                Ok(_) => {
-                    instance_state.insert(key.clone(), false);
-                }
-                Err(err) => {
-                    instance_state.insert(key.clone(), true);
-                }
-            }
-        }
-
-        instance_state
+    pub fn get_exit_receiver(&self) -> Arc<Mutex<Receiver<(ThreadResult, Result<(), KPGError>)>>> {
+        self.exit_channel_receiver.clone()
     }
 
     pub fn read_plugin_content(plugin_name: &String) -> Result<Vec<u8>, KPGError> {

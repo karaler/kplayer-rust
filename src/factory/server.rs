@@ -41,7 +41,7 @@ impl KPGFactory {
                         for g in srv.group.iter() {
                             match g.schema {
                                 ServerSchema::Http => {
-                                    servers.insert(srv.name.clone(), Arc::new(Mutex::new(Box::new(KPGApi::new(g.address.clone(), g.port.clone())))));
+                                    servers.insert(srv.name.clone(), Arc::new(Mutex::new(Box::new(KPGApi::new(g.name.clone(), g.address.clone(), g.port.clone())))));
                                     info!("create api server success. type: {}, server: {}, address: {}, port: {}",srv.target, srv.name, g.address,g.port);
                                 }
                                 _ => {
