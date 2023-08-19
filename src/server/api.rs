@@ -41,7 +41,10 @@ impl KPGApi {
                     .route("/instance/{name}/playlist", web::get().to(|name: web::Path<String>| {
                         get_instance_playlist(name.to_string())
                     }))
-                    .route("/instance/{name}/skip", web::post().to(|name: web::Path<String>| {
+                    .route("/instance/{name}/playlist/current", web::get().to(|name: web::Path<String>| {
+                        get_instance_current(name.to_string())
+                    }))
+                    .route("/instance/{name}/playlist/skip", web::post().to(|name: web::Path<String>| {
                         post_instance_skip(name.to_string())
                     }))
             }).bind((self.address.as_str(), self.port)).map_err(|err| {

@@ -20,6 +20,18 @@ pub async fn get_instance_playlist(name: String) -> HttpResponse {
     HttpResponse::Ok().json(receipt)
 }
 
+pub async fn get_instance_current(name: String) -> HttpResponse {
+    let console = GLOVAL_CONSOLE.lock().unwrap();
+    let receipt = match console.issue(KPConsoleModule::Instance, name, KPConsolePrompt::InstanceCurrentMedia {}) {
+        Ok(receipt) => receipt,
+        Err(err) => {
+            return HttpResponse::Ok().json(&err);
+        }
+    };
+
+    HttpResponse::Ok().json(receipt)
+}
+
 pub async fn post_instance_skip(name: String) -> HttpResponse {
     let console = GLOVAL_CONSOLE.lock().unwrap();
     let receipt = match console.issue(KPConsoleModule::Instance, name, KPConsolePrompt::InstanceSkipPlayList {}) {
