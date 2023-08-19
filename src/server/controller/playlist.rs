@@ -1,5 +1,5 @@
+use std::collections::HashMap;
 use actix_web::{HttpResponse};
+use libkplayer::util::console::{KPConsoleModule, KPConsolePrompt};
+use crate::GLOVAL_CONSOLE;
 
-pub async fn get_playlist_list() -> HttpResponse {
-    HttpResponse::Ok().body("hello")
-}

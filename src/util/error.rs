@@ -14,6 +14,7 @@ pub enum KPGErrorCode {
     KPGMediaServerExited,
     KPGFactoryParseConfigFailed,
     KPGFactoryOpenPluginFailed,
+    KPGFactoryConsoleModuleNotFound,
     KPGServerMediaServerEnableSchemaFailed,
     KPGServerMediaServerStartFailed,
     KPGServerMediaServerStopFailed,

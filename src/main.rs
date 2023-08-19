@@ -19,6 +19,7 @@ use std::fs::metadata;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use lazy_static::lazy_static;
+use libkplayer::util::console::KPConsole;
 
 pub mod config;
 pub mod util;
@@ -26,7 +27,8 @@ pub mod factory;
 pub mod server;
 
 lazy_static! {
-    static ref GLOBAL_FACTORY: Arc<Mutex<KPGFactory>> = Arc::new(Mutex::new(KPGFactory::new()));
+    static ref GLOVAL_CONSOLE: Arc<Mutex<KPConsole>> = Arc::new(Mutex::new(KPConsole::new()));
+    static ref GLOBAL_FACTORY: Arc<Mutex<KPGFactory>> = Arc::new(Mutex::new(KPGFactory::new(GLOVAL_CONSOLE.clone())));
 }
 
 

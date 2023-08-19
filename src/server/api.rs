@@ -5,14 +5,14 @@ use std::os::unix::raw::ino_t;
 use std::rc::Rc;
 use std::sync::Arc;
 use actix_web::{App, HttpServer, middleware, web};
-use futures::{join, select, TryFutureExt, TryStreamExt};
 use libkplayer::bindings::nan;
 use libkplayer::codec::playlist::KPPlayList;
 use log::info;
 use crate::config::ServerSchema;
 use crate::factory::KPGFactory;
 use crate::server::{KPGServer, ServerContext};
-use crate::server::controller::playlist::{get_playlist_list};
+use crate::server::controller::instance::*;
+use crate::server::controller::playlist::*;
 use crate::util::error::KPGError;
 use crate::util::error::KPGErrorCode::KPGAPIServerBindFailed;
 
@@ -38,8 +38,11 @@ impl KPGApi {
             let server = HttpServer::new(|| {
                 App::new().wrap(middleware::Logger::default())
                     .app_data(web::JsonConfig::default().limit(MAX_JSON_BODY))
-                    .route("/playlist", web::get().to(move || {
-                        get_playlist_list()
+                    .route("/instance/{name}/playlist", web::get().to(|name: web::Path<String>| {
+                        get_instance_playlist(name.to_string())
+                    }))
+                    .route("/instance/{name}/skip", web::post().to(|name: web::Path<String>| {
+                        post_instance_skip(name.to_string())
                     }))
             }).bind((self.address.as_str(), self.port)).map_err(|err| {
                 KPGError::new_with_string(KPGAPIServerBindFailed, format!("address: {}, port: {}, error: {}", address, port, err))

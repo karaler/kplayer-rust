@@ -10,9 +10,9 @@ use std::fs::File;
 use std::io::Read;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::sync::atomic::AtomicBool;
-use std::sync::mpsc::{Receiver, sync_channel, SyncSender};
+use std::sync::mpsc::{channel, Receiver, sync_channel, SyncSender};
 use std::thread::JoinHandle;
 use bus::BusReader;
 use libkplayer::bindings::{AVCodecID_AV_CODEC_ID_H264, exit};
@@ -23,6 +23,7 @@ use libkplayer::codec::transform::KPTransform;
 use libkplayer::plugin::plugin::KPPlugin;
 use libkplayer::server::media_pusher::KPMediaPusher;
 use libkplayer::subscribe_message;
+use libkplayer::util::console::{KPConsole, KPConsoleModule};
 use libkplayer::util::error::KPError;
 use libkplayer::util::kpcodec::avmedia_type::KPAVMediaType;
 use libkplayer::util::kpcodec::kpencode_parameter::{KPEncodeParameterItem, KPEncodeParameterItemPreset, KPEncodeParameterItemProfile};
@@ -41,6 +42,8 @@ use crate::util::time::KPDuration;
 
 const PLUGIN_DIRECTORY: &str = "plugin/";
 const PLUGIN_EXTENSION: &str = ".kpe";
+
+const PROMPT_MAX_QUEUE_SIZE: usize = 5;
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub enum ThreadType {
@@ -67,10 +70,13 @@ pub struct KPGFactory {
 
     // state
     is_created: Arc<Mutex<bool>>,
+
+    // console
+    console: Arc<Mutex<KPConsole>>,
 }
 
 impl KPGFactory {
-    pub fn new() -> KPGFactory {
+    pub fn new(console: Arc<Mutex<KPConsole>>) -> KPGFactory {
         let (exit_sender, exit_receiver) = sync_channel(1);
         return KPGFactory {
             playlist: Default::default(),
@@ -81,8 +87,14 @@ impl KPGFactory {
             exit_channel_sender: exit_sender,
             exit_channel_receiver: Arc::new(Mutex::new(exit_receiver)),
             is_created: Arc::new(Mutex::new(false)),
+            console,
         };
     }
+
+    pub fn set_console(&mut self, console: Arc<Mutex<KPConsole>>) {
+        self.console = console
+    }
+
 
     pub fn create(&mut self, cfg: Root) -> Result<(), KPGError> {
         self.create_playlist(&cfg)?;
@@ -138,6 +150,15 @@ impl KPGFactory {
         instance_name
     }
 
+    pub fn get_instance(&self, name: &String) -> Option<Arc<Mutex<KPTransform>>> {
+        match self.instance.get(name) {
+            None => None,
+            Some(transform) => {
+                Some(transform.clone())
+            }
+        }
+    }
+
     pub fn launch_instance(&mut self, name: &String) -> Result<ThreadResult, KPGError> {
         let transform = self.instance.get(name).unwrap();
         let transform_clone = transform.clone();
@@ -149,10 +170,20 @@ impl KPGFactory {
         };
         info!("launch instance. thread result: {:?}", thread_result);
 
+        // create prompt passer
         let thread_result_clone = thread_result.clone();
+        let console_clone = self.console.clone();
         std::thread::spawn(move || {
             let mut get_transform = transform_clone.lock().unwrap();
             let name = get_transform.get_name();
+
+            // register prompt receiver
+            {
+                let console_receiver = console_clone.lock().unwrap().register(KPConsoleModule::Instance, name.clone());
+                get_transform.set_console_receiver(console_receiver);
+            }
+
+            // launch
             let result = get_transform.launch(None);
             let exit_result = match result {
                 Ok(_) => {
@@ -166,6 +197,10 @@ impl KPGFactory {
         });
 
         Ok(thread_result)
+    }
+
+    pub fn get_playlist(&self) -> HashMap<String, KPPlayList> {
+        self.playlist.clone()
     }
 
     pub fn launch_message_bus(&mut self) {
