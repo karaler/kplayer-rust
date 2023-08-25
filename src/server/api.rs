@@ -38,15 +38,10 @@ impl KPGApi {
             let server = HttpServer::new(|| {
                 App::new().wrap(middleware::Logger::default())
                     .app_data(web::JsonConfig::default().limit(MAX_JSON_BODY))
-                    .route("/instance/{name}/playlist", web::get().to(|name: web::Path<String>| {
-                        get_instance_playlist(name.to_string())
-                    }))
-                    .route("/instance/{name}/playlist/current", web::get().to(|name: web::Path<String>| {
-                        get_instance_current(name.to_string())
-                    }))
-                    .route("/instance/{name}/playlist/skip", web::post().to(|name: web::Path<String>| {
-                        post_instance_skip(name.to_string())
-                    }))
+                    .service(get_instance_playlist)
+                    .service(get_instance_current)
+                    .service(post_instance_skip)
+                    .service(add_instance_media)
             }).bind((self.address.as_str(), self.port)).map_err(|err| {
                 KPGError::new_with_string(KPGAPIServerBindFailed, format!("address: {}, port: {}, error: {}", address, port, err))
             })?.run();

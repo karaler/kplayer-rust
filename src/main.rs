@@ -79,7 +79,7 @@ fn main() {
                 if result.is_err() {
                     panic!("thread exit exception. err: {:?}", result);
                 }
-                match thread_result_map.clone().get_mut(&thread_result) {
+                match thread_result_map.get_mut(&thread_result) {
                     None => {
                         panic!("thread not register. thread_result: {:?}", thread_result);
                     }
@@ -95,6 +95,8 @@ fn main() {
                 {
                     let viable_instance: Vec<bool> = thread_result_map.iter().map(|(filter_thread_result, filter_result)| {
                         filter_thread_result.thread_type == ThreadType::Instance && !*filter_result
+                    }).filter(|item| {
+                        *item
                     }).collect();
                     if viable_instance.len() == 0 {
                         break;
