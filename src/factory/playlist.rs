@@ -75,7 +75,7 @@ impl KPGFactory {
                         }
                     }
                 }
-                info!("create playlist success. playlist: {}, media count: {}", pl.name, playlist.get_media_list().len());
+                info!("create playlist success. playlist: {}, media total: {}", pl.name, playlist.get_media_list().len());
                 load_playlist.insert(pl.name.clone(), playlist);
             }
             load_playlist
