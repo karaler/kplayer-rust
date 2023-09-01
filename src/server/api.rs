@@ -80,10 +80,14 @@ impl KPGServer for KPGApi {
     }
 
     fn get_schema(&self, schema: ServerSchema) -> Option<ServerContext> {
-        todo!()
+        Some(ServerContext {
+            name: self.name.clone(),
+            address: self.address.clone(),
+            port: self.port.clone() as u32,
+        })
     }
 
     fn get_name(&self) -> String {
-        todo!()
+        self.name.clone()
     }
 }

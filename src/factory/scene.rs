@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use libkplayer::plugin::plugin::KPPlugin;
+use libkplayer::util::kpcodec::kpfilter_parameter::KPFilterParameterItem;
 use log::info;
 use crate::config::Root;
 use crate::factory::KPGFactory;
@@ -13,6 +14,7 @@ impl KPGFactory {
                 let mut group = HashMap::new();
                 for item in s.group.iter() {
                     let mut plugin = KPPlugin::new(KPGFactory::read_plugin_content(&item.app)?);
+                    plugin.set_params(item.params.clone());
                     group.insert(item.name.clone(), plugin);
                 }
                 info!("create scene success. scene: {}", s.name.clone());

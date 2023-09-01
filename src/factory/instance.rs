@@ -109,8 +109,7 @@ impl KPGFactory {
                             KPGError::new_with_string(KPGFactoryParseConfigFailed, format!("load scene plugin item failed. instance: {}, scene: {} plugin: {}, error: {}", ins.name, ins.scene, name, err))
                         })?;
 
-                        // @TODO add config params
-                        scene_plugin_item.open(HashMap::new()).map_err(|err| {
+                        scene_plugin_item.open().map_err(|err| {
                             KPGError::new_with_string(KPGFactoryParseConfigFailed, format!("open scene plugin item failed. instance: {}, scene: {} plugin: {}, error: {}", ins.name, ins.scene, name, err))
                         })?;
                         plugin_group.insert(name.clone(), scene_plugin_item);

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fmt::format;
 use libkplayer::bindings::rand;
 use log::{debug, warn};
-use serde_json::{from_slice, json, Value};
+use serde_json::{Error, from_slice, json, Value};
 use crate::config::{Instance, Output, OutputType, Playlist, ResourceType, Root, Scene, Server, ServerGroup, ServerSchema, ServerTokenType, ServerType};
 use crate::config::OutputType::OutputSingle;
 use crate::config::ResourceType::{ResourceDirectory, ResourceSingle};
@@ -107,8 +107,13 @@ impl ParseConfig for Version300 {
                     }
                 }
                 str if str == String::from("scene") => {
-                    if let Ok(get_scenes) = serde_json::from_value::<Vec<Scene>>(json!(value)) {
-                        cfg.scene = get_scenes;
+                    match serde_json::from_value::<Vec<Scene>>(json!(value)) {
+                        Ok(get_scenes) => {
+                            cfg.scene = get_scenes
+                        }
+                        Err(err) => {
+                            return Err(KPGError::new_with_string(KPGConfigParseFailed, format!("scene invalid json format. error: {}", err)));
+                        }
                     }
                 }
                 str if str == String::from("output") => {
@@ -279,8 +284,13 @@ impl ParseConfig for Version300 {
                     }
                 }
                 str if str == String::from("instance") => {
-                    if let Ok(get_instance) = serde_json::from_value::<Vec<Instance>>(json!(value)) {
-                        cfg.instance = get_instance;
+                    match serde_json::from_value::<Vec<Instance>>(json!(value)) {
+                        Ok(get_instance) => {
+                            cfg.instance = get_instance
+                        }
+                        Err(err) => {
+                            return Err(KPGError::new_with_string(KPGConfigParseFailed, format!("instance invalid json format. error: {}", err)));
+                        }
                     }
                 }
                 _ => {

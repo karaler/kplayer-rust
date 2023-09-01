@@ -93,16 +93,7 @@ pub struct Scene {
 pub struct Group {
     pub name: String,
     pub app: String,
-    pub params: Params,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Params {
-    pub text: String,
-    pub y: i64,
-    #[serde(rename = "font_size")]
-    pub font_size: i64,
+    pub params: HashMap<String, String>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
