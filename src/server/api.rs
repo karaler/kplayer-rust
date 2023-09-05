@@ -60,6 +60,7 @@ impl KPGApi {
             };
             actix_rt::spawn(wait_signal);
 
+            info!("api server listen success. address: {}, port: {}", self.address,self.port);
             server.await.map_err(|err| {
                 KPGError::new_with_string(KPGAPIServerBindFailed, format!("register signal failed. name: {}, error: {}", self.name, err))
             })?;

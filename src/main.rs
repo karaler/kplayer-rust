@@ -27,8 +27,7 @@ pub mod factory;
 pub mod server;
 
 lazy_static! {
-    static ref GLOVAL_CONSOLE: Arc<Mutex<KPConsole>> = Arc::new(Mutex::new(KPConsole::new()));
-    static ref GLOBAL_FACTORY: Arc<Mutex<KPGFactory>> = Arc::new(Mutex::new(KPGFactory::new(GLOVAL_CONSOLE.clone())));
+    static ref GLOBAL_FACTORY: Arc<Mutex<KPGFactory>> = Arc::new(Mutex::new(KPGFactory::new()));
 }
 
 
