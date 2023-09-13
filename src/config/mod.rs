@@ -190,7 +190,7 @@ impl Default for ServerSchema {
 pub struct Instance {
     pub name: String,
     pub playlist: String,
-    pub scene: String,
+    pub scene: Option<String>,
     pub server: String,
     pub cache: Cache,
     pub encode: Encode,

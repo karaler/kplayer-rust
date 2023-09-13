@@ -94,28 +94,28 @@ impl KPGFactory {
                 }
 
                 // set scene
-                if !ins.scene.is_empty() {
+                if let Some(scene) = &ins.scene {
                     let get_scene = {
-                        if !self.scene.contains_key(&ins.scene) {
-                            return Err(KPGError::new_with_string(KPGFactoryParseConfigFailed, format!("couldn't find the scene for the target configuration instance. instance: {}, scene: {}", ins.name, ins.scene)));
+                        if !self.scene.contains_key(scene) {
+                            return Err(KPGError::new_with_string(KPGFactoryParseConfigFailed, format!("couldn't find the scene for the target configuration instance. instance: {}, scene: {}", ins.name, scene)));
                         }
-                        self.scene.get(&ins.scene).unwrap()
+                        self.scene.get(scene).unwrap()
                     };
 
                     let mut plugin_group = HashMap::new();
                     for (name, scene_item) in get_scene {
                         let mut scene_plugin_item = scene_item.clone();
-                        scene_plugin_item.load().map_err(|err| {
-                            KPGError::new_with_string(KPGFactoryParseConfigFailed, format!("load scene plugin item failed. instance: {}, scene: {} plugin: {}, error: {}", ins.name, ins.scene, name, err))
+                        scene_plugin_item.load(Some(ins.name.clone()), Some(name.clone())).map_err(|err| {
+                            KPGError::new_with_string(KPGFactoryParseConfigFailed, format!("load scene plugin item failed. instance: {}, scene: {} plugin: {}, error: {}", ins.name, scene, name, err))
                         })?;
 
                         scene_plugin_item.open().map_err(|err| {
-                            KPGError::new_with_string(KPGFactoryParseConfigFailed, format!("open scene plugin item failed. instance: {}, scene: {} plugin: {}, error: {}", ins.name, ins.scene, name, err))
+                            KPGError::new_with_string(KPGFactoryParseConfigFailed, format!("open scene plugin item failed. instance: {}, scene: {} plugin: {}, error: {}", ins.name, scene, name, err))
                         })?;
                         plugin_group.insert(name.clone(), scene_plugin_item);
                     }
                     transform.set_custom_plugin_group(plugin_group).map_err(|err| {
-                        KPGError::new_with_string(KPGFactoryParseConfigFailed, format!("can not set scene. instance: {}, scene: {}, error: {}", ins.name, ins.scene, err))
+                        KPGError::new_with_string(KPGFactoryParseConfigFailed, format!("can not set scene. instance: {}, scene: {}, error: {}", ins.name, scene, err))
                     })?;
                 }
 
@@ -123,7 +123,7 @@ impl KPGFactory {
                 if !ins.server.is_empty() {
                     let get_server = {
                         if !self.server.contains_key(&ins.server) {
-                            return Err(KPGError::new_with_string(KPGFactoryParseConfigFailed, format!("couldn't find the server for the target configuration instance. instance: {}, scene: {}", ins.name, ins.scene)));
+                            return Err(KPGError::new_with_string(KPGFactoryParseConfigFailed, format!("couldn't find the server for the target configuration instance. instance: {}, server: {}", ins.name, ins.server)));
                         }
                         self.server.get(&ins.server).unwrap()
                     };
@@ -134,7 +134,7 @@ impl KPGFactory {
                     }
                 }
 
-                info!("create instance success. name: {}, playlist: {}, scene: {}, server: {}",ins.name,ins.playlist,ins.scene,ins.server);
+                info!("create instance success. name: {}, playlist: {}, scene: {:?}, server: {}",ins.name,ins.playlist,ins.scene,ins.server);
                 instances.insert(ins.name.clone(), Arc::new(Mutex::new(transform)));
             }
 

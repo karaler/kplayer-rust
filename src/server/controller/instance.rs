@@ -14,7 +14,7 @@ use crate::config::ResourceType;
 #[get("/instance/{name}/playlist")]
 pub async fn get_instance_playlist(name: web::Path<String>) -> HttpResponse {
     let global_console = get_global_console();
-    let console = global_console.lock().unwrap();
+    let console = global_console.lock().await;
     let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformGetPlayList {}) {
         Ok(receipt) => receipt,
         Err(err) => {
@@ -28,7 +28,7 @@ pub async fn get_instance_playlist(name: web::Path<String>) -> HttpResponse {
 #[get("/instance/{name}/playlist/current")]
 pub async fn get_instance_current(name: web::Path<String>) -> HttpResponse {
     let global_console = get_global_console();
-    let console = global_console.lock().unwrap();
+    let console = global_console.lock().await;
     let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformCurrentMedia {}) {
         Ok(receipt) => receipt,
         Err(err) => {
@@ -42,7 +42,7 @@ pub async fn get_instance_current(name: web::Path<String>) -> HttpResponse {
 #[post("/instance/{name}/playlist/skip")]
 pub async fn post_instance_skip(name: web::Path<String>) -> HttpResponse {
     let global_console = get_global_console();
-    let console = global_console.lock().unwrap();
+    let console = global_console.lock().await;
     let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformSkipPlayList {}) {
         Ok(receipt) => receipt,
         Err(err) => {
@@ -56,7 +56,7 @@ pub async fn post_instance_skip(name: web::Path<String>) -> HttpResponse {
 #[post("/instance/{name}/playlist/add")]
 pub async fn add_instance_media(name: web::Path<String>, body: web::Json<PromptTransformAddMediaPlayList>) -> HttpResponse {
     let global_console = get_global_console();
-    let console = global_console.lock().unwrap();
+    let console = global_console.lock().await;
     let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformAddMediaPlayList { media: body.clone() })
     {
         Ok(receipt) => receipt,
