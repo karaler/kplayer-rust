@@ -5,6 +5,7 @@ use log::info;
 use crate::config::Root;
 use crate::factory::KPGFactory;
 use crate::util::error::KPGError;
+use crate::util::error::KPGErrorCode::KPGFactoryOpenPluginFailed;
 
 impl KPGFactory {
     pub(super) fn create_scene(&mut self, cfg: &Root) -> Result<(), KPGError> {
@@ -14,7 +15,7 @@ impl KPGFactory {
                 let mut group = HashMap::new();
                 for item in s.group.iter() {
                     let mut plugin = KPPlugin::new(KPGFactory::read_plugin_content(&item.app)?);
-                    plugin.set_params(item.params.clone());
+                    plugin.set_custom_params(item.params.clone());
                     group.insert(item.name.clone(), plugin);
                 }
                 info!("create scene success. scene: {}", s.name.clone());
