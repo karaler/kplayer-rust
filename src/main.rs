@@ -65,6 +65,10 @@ fn main() {
                 let thread_result = factory.launch_instance(name).expect("launch instance failed");
                 thread_result_map.insert(thread_result, false);
             }
+            for name in factory.get_output_list().iter() {
+                let thread_result = factory.launch_output(name).expect("launch output failed");
+                thread_result_map.insert(thread_result, false);
+            }
         }
 
         factory.get_exit_receiver()
@@ -102,7 +106,7 @@ fn main() {
                     }
 
                     // api thread exit
-                    if thread_result.thread_type == ThreadType::Server {
+                    if thread_result.thread_type == ThreadType::Server || thread_result.thread_type == ThreadType::Output {
                         break;
                     }
                 }

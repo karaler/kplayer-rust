@@ -31,6 +31,7 @@ use libkplayer::util::message::{KPMessage, MessageAction};
 use log::{debug, error, info, warn};
 use crate::config::{OutputType, Playlist, ResourceType, Root, ServerSchema, ServerType};
 use crate::config::env::get_homedir;
+use crate::factory::output::KPGOutput;
 use crate::server::api::{KPGApi};
 use crate::server::KPGServer;
 use crate::server::media_server::KPGMediaServer;
@@ -49,6 +50,7 @@ const PROMPT_MAX_QUEUE_SIZE: usize = 5;
 pub enum ThreadType {
     Server,
     Instance,
+    Output,
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
@@ -60,7 +62,7 @@ pub struct ThreadResult {
 pub struct KPGFactory {
     playlist: HashMap<String, KPPlayList>,
     scene: HashMap<String, HashMap<String, KPPlugin>>,
-    output: HashMap<String, KPMediaPusher>,
+    output: HashMap<String, KPGOutput>,
     server: HashMap<String, Arc<Mutex<Box<dyn KPGServer>>>>,
     instance: HashMap<String, Arc<Mutex<KPTransform>>>,
 
@@ -174,6 +176,48 @@ impl KPGFactory {
                 }
                 Err(err) => {
                     Err(KPGError::new_with_string(KPGInstanceLaunchFailed, format!("instance launch failed. name: {}, error: {}", name, err)))
+                }
+            };
+            exit_sender_clone.send((thread_result_clone, exit_result)).unwrap();
+        });
+
+        Ok(thread_result)
+    }
+
+    pub fn get_output_list(&self) -> Vec<String> {
+        let mut output_name = Vec::new();
+        for (name, _) in self.output.iter() {
+            output_name.push(name.clone())
+        }
+
+        output_name
+    }
+
+    pub fn launch_output(&mut self, name: &String) -> Result<ThreadResult, KPGError> {
+        let output = self.output.get(name).unwrap();
+        let output_clone = output.clone();
+        let exit_sender_clone = self.exit_channel_sender.clone();
+
+        let thread_result = ThreadResult {
+            thread_name: name.clone(),
+            thread_type: ThreadType::Output,
+        };
+        info!("launch instance. thread result: {:?}", thread_result);
+
+        let thread_result_clone = thread_result.clone();
+        std::thread::spawn(move || {
+            let source_name = output_clone.get_source_name();
+            let get_media_pusher_arc = output_clone.get_media_pusher();
+            let mut get_media_pusher = get_media_pusher_arc.lock().unwrap();
+
+            // launch
+            let result = get_media_pusher.start();
+            let exit_result = match result {
+                Ok(_) => {
+                    Ok(())
+                }
+                Err(err) => {
+                    Err(KPGError::new_with_string(KPGOutputLaunchFailed, format!("output launch failed. source: {}, error: {}", source_name, err)))
                 }
             };
             exit_sender_clone.send((thread_result_clone, exit_result)).unwrap();

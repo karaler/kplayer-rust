@@ -10,6 +10,7 @@ pub enum KPGErrorCode {
     KPGConfigParseFailed,
     KPGConfigFileOpenFailed,
     KPGInstanceLaunchFailed,
+    KPGOutputLaunchFailed,
     KPGPlayListAddMediaFailed,
     KPGMediaServerExited,
     KPGFactoryParseConfigFailed,
