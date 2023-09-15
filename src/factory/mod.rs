@@ -167,7 +167,7 @@ impl KPGFactory {
             let name = get_transform.get_name();
 
             // launch
-            let result = get_transform.launch(None);
+            let result = get_transform.launch();
             let exit_result = match result {
                 Ok(_) => {
                     Ok(())
