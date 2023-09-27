@@ -78,7 +78,7 @@ fn main() {
     loop {
         match exit_receiver.lock().unwrap().recv() {
             Ok((thread_result, result)) => {
-                info!("thread exit result: {:?}",thread_result);
+                info!("thread exit: {:?}, result: {:?}",thread_result, result);
                 if result.is_err() {
                     panic!("thread exit exception. err: {:?}", result);
                 }

@@ -43,6 +43,8 @@ impl KPGApi {
                     .service(get_instance_current)
                     .service(post_instance_skip)
                     .service(add_instance_media)
+                    .service(remove_instance_media)
+                    .service(seek_instance_media)
                     // plugin
                     .service(get_instance_plugin)
                     .service(update_instance_plugin_argument)

@@ -20,7 +20,7 @@ pub async fn get_instance_playlist(name: web::Path<String>) -> HttpResponse {
     let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformGetPlayList {}) {
         Ok(receipt) => receipt,
         Err(err) => {
-            return HttpResponse::Ok().json(&err);
+            return HttpResponse::UnprocessableEntity().json(&err);
         }
     };
 
@@ -34,7 +34,7 @@ pub async fn get_instance_current(name: web::Path<String>) -> HttpResponse {
     let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformCurrentMedia {}) {
         Ok(receipt) => receipt,
         Err(err) => {
-            return HttpResponse::Ok().json(&err);
+            return HttpResponse::UnprocessableEntity().json(&err);
         }
     };
 
@@ -48,7 +48,7 @@ pub async fn post_instance_skip(name: web::Path<String>) -> HttpResponse {
     let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformSkipPlayList {}) {
         Ok(receipt) => receipt,
         Err(err) => {
-            return HttpResponse::Ok().json(&err);
+            return HttpResponse::UnprocessableEntity().json(&err);
         }
     };
 
@@ -63,7 +63,55 @@ pub async fn add_instance_media(name: web::Path<String>, body: web::Json<PromptT
     {
         Ok(receipt) => receipt,
         Err(err) => {
-            return HttpResponse::Ok().json(&err);
+            return HttpResponse::UnprocessableEntity().json(&err);
+        }
+    };
+
+    HttpResponse::Ok().json(receipt)
+}
+
+#[derive(Deserialize)]
+pub struct RemoveInstanceMedia {
+    name: String,
+}
+
+#[post("/instance/{name}/playlist/remove")]
+pub async fn remove_instance_media(name: web::Path<String>, body: web::Json<RemoveInstanceMedia>) -> HttpResponse {
+    let global_console = get_global_console();
+    let console = global_console.lock().await;
+    let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformRemoveMediaPlayList { name: body.name.clone() })
+    {
+        Ok(receipt) => receipt,
+        Err(err) => {
+            return HttpResponse::UnprocessableEntity().json(&err);
+        }
+    };
+
+    HttpResponse::Ok().json(receipt)
+}
+
+#[derive(Deserialize)]
+pub struct SeekInstanceMedia {
+    name: String,
+    seek: Option<i32>,
+    end: Option<i32>,
+    is_persistence: Option<bool>,
+}
+
+#[post("/instance/{name}/playlist/seek")]
+pub async fn seek_instance_media(name: web::Path<String>, body: web::Json<SeekInstanceMedia>) -> HttpResponse {
+    let global_console = get_global_console();
+    let console = global_console.lock().await;
+    let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformSeekMediaPlayList {
+        name: body.name.clone(),
+        seek: body.seek,
+        end: body.end,
+        is_persistence: body.is_persistence,
+    })
+    {
+        Ok(receipt) => receipt,
+        Err(err) => {
+            return HttpResponse::UnprocessableEntity().json(&err);
         }
     };
 
@@ -78,7 +126,7 @@ pub async fn get_instance_plugin(name: web::Path<String>) -> HttpResponse {
     let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransferGetPluginList {}) {
         Ok(receipt) => receipt,
         Err(err) => {
-            return HttpResponse::Ok().json(&err);
+            return HttpResponse::UnprocessableEntity().json(&err);
         }
     };
     HttpResponse::Ok().json(receipt)
@@ -109,7 +157,7 @@ pub async fn update_instance_plugin_argument(path: web::Path<(String, String)>, 
     ) {
         Ok(receipt) => receipt,
         Err(err) => {
-            return HttpResponse::Ok().json(&err);
+            return HttpResponse::UnprocessableEntity().json(&err);
         }
     };
 
