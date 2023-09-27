@@ -38,10 +38,14 @@ impl KPGApi {
             let server = HttpServer::new(|| {
                 App::new().wrap(middleware::Logger::default())
                     .app_data(web::JsonConfig::default().limit(MAX_JSON_BODY))
+                    // playlist
                     .service(get_instance_playlist)
                     .service(get_instance_current)
                     .service(post_instance_skip)
                     .service(add_instance_media)
+                    // plugin
+                    .service(get_instance_plugin)
+                    .service(update_instance_plugin_argument)
             }).bind((self.address.as_str(), self.port)).map_err(|err| {
                 KPGError::new_with_string(KPGAPIServerBindFailed, format!("address: {}, port: {}, error: {}", address, port, err))
             })?.run();
