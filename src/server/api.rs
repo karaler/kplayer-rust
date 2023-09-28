@@ -46,6 +46,9 @@ impl KPGApi {
                     .service(remove_instance_media)
                     .service(seek_instance_media)
                     .service(select_instance_media)
+                    // basic
+                    .service(get_instance_info)
+                    .service(get_instance_encode_parameter)
                     // plugin
                     .service(get_instance_plugin)
                     .service(update_instance_plugin_argument)

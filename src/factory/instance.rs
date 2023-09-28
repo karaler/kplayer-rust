@@ -79,7 +79,7 @@ impl KPGFactory {
                     }
                 }, encode_parameters, consistent_timestamp);
 
-                // set parameters
+                // set playlist
                 if !ins.playlist.is_empty() {
                     let mut get_playlist = {
                         if !self.playlist.contains_key(&ins.playlist) {

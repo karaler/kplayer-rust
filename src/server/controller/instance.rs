@@ -7,7 +7,7 @@ use libkplayer::codec::component::media::KPMedia;
 use libkplayer::codec::transform::KPTransform;
 use libkplayer::get_global_console;
 use libkplayer::util::console::*;
-use libkplayer::util::console::KPConsolePrompt::TransformUpdatePlugin;
+use libkplayer::util::console::KPConsolePrompt::{*};
 use libkplayer::util::error::KPError;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -198,6 +198,44 @@ pub async fn update_instance_plugin_argument(path: web::Path<(String, String)>, 
             name: body.name.clone(),
             arguments,
         },
+    ) {
+        Ok(receipt) => receipt,
+        Err(err) => {
+            return HttpResponse::UnprocessableEntity().json(&err);
+        }
+    };
+
+    HttpResponse::Ok().json(receipt)
+}
+
+#[get("/instance/{instance_name}/info")]
+pub async fn get_instance_info(path: web::Path<String>) -> HttpResponse {
+    let instance_name = path.to_string();
+    let global_console = get_global_console();
+    let console = global_console.lock().await;
+    let receipt = match console.issue(
+        KPConsoleModule::Transform,
+        instance_name.to_string(),
+        TransferGetBasicInfo {},
+    ) {
+        Ok(receipt) => receipt,
+        Err(err) => {
+            return HttpResponse::UnprocessableEntity().json(&err);
+        }
+    };
+
+    HttpResponse::Ok().json(receipt)
+}
+
+#[get("/instance/{instance_name}/encode_parameter")]
+pub async fn get_instance_encode_parameter(path: web::Path<String>) -> HttpResponse {
+    let instance_name = path.to_string();
+    let global_console = get_global_console();
+    let console = global_console.lock().await;
+    let receipt = match console.issue(
+        KPConsoleModule::Transform,
+        instance_name.to_string(),
+        TransferGetEncodeParameter {},
     ) {
         Ok(receipt) => receipt,
         Err(err) => {
