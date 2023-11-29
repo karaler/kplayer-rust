@@ -2,7 +2,7 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::format;
 use libkplayer::bindings::rand;
-use log::{debug, warn};
+use log::{debug, error, warn};
 use serde_json::{Error, from_slice, json, Value};
 use crate::config::{Instance, Output, OutputType, Playlist, ResourceType, Root, Scene, Server, ServerGroup, ServerSchema, ServerTokenType, ServerType};
 use crate::config::OutputType::OutputSingle;
@@ -80,18 +80,36 @@ impl ParseConfig for Version300 {
                                 }
                                 Value::Object(val) => {
                                     let mut resource = Default::default();
-                                    if val.contains_key("directory") {
-                                        let mut content = HashMap::new();
-                                        content.insert("ResourceDirectory", val);
-                                        resource = serde_json::from_value(json!(content)).map_err(|err| {
-                                            KPGError::new_with_string(KPGConfigParseFailed, format!("playlist resource invalid json format, error: {}", err))
-                                        })?;
+                                    if val.contains_key("type") {
+                                        let get_type = val.get("type").unwrap().as_str().unwrap();
+                                        match get_type {
+                                            "detail" => {
+                                                let mut content = HashMap::new();
+                                                content.insert("ResourceDetail", val);
+                                                resource = serde_json::from_value(json!(content)).map_err(|err| {
+                                                    KPGError::new_with_string(KPGConfigParseFailed, format!("playlist resource invalid json format, error: {}", err))
+                                                })?;
+                                            }
+                                            "directory" => {
+                                                let mut content = HashMap::new();
+                                                content.insert("ResourceDirectory", val);
+                                                resource = serde_json::from_value(json!(content)).map_err(|err| {
+                                                    KPGError::new_with_string(KPGConfigParseFailed, format!("playlist resource invalid json format, error: {}", err))
+                                                })?;
+                                            }
+                                            "group" => {
+                                                let mut content = HashMap::new();
+                                                content.insert("ResourceGroup", val);
+                                                resource = serde_json::from_value(json!(content)).map_err(|err| {
+                                                    KPGError::new_with_string(KPGConfigParseFailed, format!("playlist resource invalid json format, error: {}", err))
+                                                })?;
+                                            }
+                                            &_ => {
+                                                error!("not support object attribute for resource type. type: {}", get_type);
+                                            }
+                                        }
                                     } else {
-                                        let mut content = HashMap::new();
-                                        content.insert("ResourceDetail", val);
-                                        resource = serde_json::from_value(json!(content)).map_err(|err| {
-                                            KPGError::new_with_string(KPGConfigParseFailed, format!("playlist resource invalid json format, error: {}", err))
-                                        })?;
+                                        error!("invalid object attribute for resource type");
                                     }
 
                                     resource

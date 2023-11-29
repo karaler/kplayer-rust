@@ -98,8 +98,6 @@ pub async fn remove_instance_media(name: web::Path<String>, body: web::Json<Remo
 
 #[derive(Deserialize, Validate)]
 pub struct SeekInstanceMedia {
-    #[validate(length(min = 1))]
-    name: String,
     seek: Option<i32>,
     end: Option<i32>,
     is_persistence: Option<bool>,
@@ -112,7 +110,6 @@ pub async fn seek_instance_media(name: web::Path<String>, body: web::Json<SeekIn
     let global_console = get_global_console();
     let console = global_console.lock().await;
     let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformSeekMediaPlayList {
-        name: body.name.clone(),
         seek: body.seek,
         end: body.end,
         is_persistence: body.is_persistence,

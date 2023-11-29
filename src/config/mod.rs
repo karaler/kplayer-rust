@@ -48,6 +48,13 @@ pub struct Playlist {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ResourceTypeGroupPrimaryType {
+    None,
+    Audio,
+    Video,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ResourceType {
     ResourceSingle {
         path: String,
@@ -58,6 +65,15 @@ pub enum ResourceType {
     },
     ResourceDetail {
         path: String,
+        name: Option<String>,
+        seek: Option<i32>,
+        end: Option<i32>,
+        stream: Option<Stream>,
+    },
+    ResourceGroup {
+        video_path: String,
+        audio_path: String,
+        primary_type: Option<ResourceTypeGroupPrimaryType>,
         name: Option<String>,
         seek: Option<i32>,
         end: Option<i32>,

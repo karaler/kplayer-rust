@@ -1,9 +1,9 @@
 use std::collections::HashMap;
-use libkplayer::codec::component::media::KPMedia;
+use libkplayer::codec::component::media::{KPMedia, KPMediaResource};
 use libkplayer::codec::playlist::{KPPlayList, PlayModel};
 use libkplayer::util::kpcodec::avmedia_type::KPAVMediaType;
 use log::{info, warn};
-use crate::config::{ResourceType, Root};
+use crate::config::{ResourceType, ResourceTypeGroupPrimaryType, Root};
 use crate::factory::KPGFactory;
 use crate::util::error::KPGError;
 use crate::util::error::KPGErrorCode::*;
@@ -27,7 +27,7 @@ impl KPGFactory {
                 for res in pl.resource.iter() {
                     match res {
                         ResourceType::ResourceSingle { path } => {
-                            let mut media = KPMedia::new(path.clone(), None, None, None);
+                            let mut media = KPMedia::new(KPMediaResource::SingleSource { path: path.clone() }, None, None, None);
                             let open_result = media.open();
                             if let Err(err) = open_result {
                                 warn!("add media to playlist failed. playlist: {}, media: {}, error: {}", pl.name,path,err)
@@ -41,7 +41,7 @@ impl KPGFactory {
                         }
                         ResourceType::ResourceDirectory { directory, extension } => {
                             for file in read_directory_file(directory.clone(), extension.clone())? {
-                                let mut media = KPMedia::new(file.clone(), None, None, None);
+                                let mut media = KPMedia::new(KPMediaResource::SingleSource { path: file.clone() }, None, None, None);
                                 if let Err(err) = media.open() {
                                     warn!("add media to playlist failed. playlist: {}, media: {}, error: {}", pl.name,file,err)
                                 } else {
@@ -61,7 +61,7 @@ impl KPGFactory {
                                 if get_stream.subtitle >= 0 { expect_streams.insert(KPAVMediaType::KPAVMEDIA_TYPE_SUBTITLE, get_stream.subtitle as u32); }
                             }
 
-                            let mut media = KPMedia::new(path.clone(), name.clone(), seek.clone(), end.clone());
+                            let mut media = KPMedia::new(KPMediaResource::SingleSource { path: path.clone() }, name.clone(), seek.clone(), end.clone());
                             media.set_expect_stream_index(expect_streams);
                             if let Err(err) = media.open() {
                                 warn!("add media to playlist failed. playlist: {}, media: {}, error: {}", pl.name,path,err)
@@ -71,6 +71,44 @@ impl KPGFactory {
                                     KPGError::new_with_string(KPGFactoryParseConfigFailed, format!("add media to playlist failed. playlist: {}, media: {}, error: {}", pl.name, path, err))
                                 })?;
                                 info!("add media to playlist success. playlist: {}, media: {}, duration: {:?}, seek: {:?}, end: {:?}", pl.name,path,KPDuration::new(duration),seek,end);
+                            }
+                        }
+                        ResourceType::ResourceGroup { video_path, audio_path, primary_type, name, seek, end, stream } => {
+                            let mut expect_streams = HashMap::new();
+                            if let Some(get_stream) = stream {
+                                if get_stream.video >= 0 { expect_streams.insert(KPAVMediaType::KPAVMEDIA_TYPE_VIDEO, get_stream.video as u32); }
+                                if get_stream.audio >= 0 { expect_streams.insert(KPAVMediaType::KPAVMEDIA_TYPE_AUDIO, get_stream.audio as u32); }
+                                if get_stream.subtitle >= 0 { expect_streams.insert(KPAVMediaType::KPAVMEDIA_TYPE_SUBTITLE, get_stream.subtitle as u32); }
+                            }
+
+                            let mut media = KPMedia::new(KPMediaResource::MixSource {
+                                video_path: video_path.clone(),
+                                audio_path: audio_path.clone(),
+                                primary_media_type: {
+                                    match primary_type {
+                                        None => {
+                                            KPAVMediaType::KPAVMEDIA_TYPE_UNKNOWN
+                                        }
+                                        Some(get_type) => {
+                                            match get_type {
+                                                ResourceTypeGroupPrimaryType::None => KPAVMediaType::KPAVMEDIA_TYPE_UNKNOWN,
+                                                ResourceTypeGroupPrimaryType::Audio => KPAVMediaType::KPAVMEDIA_TYPE_AUDIO,
+                                                ResourceTypeGroupPrimaryType::Video => KPAVMediaType::KPAVMEDIA_TYPE_VIDEO,
+                                            }
+                                        }
+                                    }
+                                },
+                            }, name.clone(), seek.clone(), end.clone());
+                            media.set_expect_stream_index(expect_streams);
+                            if let Err(err) = media.open() {
+                                warn!("add media to playlist failed. playlist: {}, media: {}, error: {}",pl.name, media.get_name(),err)
+                            } else {
+                                let duration = media.get_duration();
+                                let media_path = media.get_path();
+                                playlist.add_media(media).map_err(|err| {
+                                    KPGError::new_with_string(KPGFactoryParseConfigFailed, format!("add media to playlist failed. playlist: {}, media: {:?}, error: {}", pl.name, media_path, err))
+                                })?;
+                                info!("add media to playlist success. playlist: {}, media: {:?}, duration: {:?}, seek: {:?}, end: {:?}", pl.name,media_path,KPDuration::new(duration),seek,end);
                             }
                         }
                     }
