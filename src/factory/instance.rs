@@ -77,7 +77,7 @@ impl KPGFactory {
                     } else {
                         None
                     }
-                }, encode_parameters, consistent_timestamp);
+                }, Some(ins.enable_hardware), encode_parameters, consistent_timestamp);
 
                 // set playlist
                 if !ins.playlist.is_empty() {

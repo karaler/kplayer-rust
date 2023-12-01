@@ -258,12 +258,18 @@ impl KPGFactory {
         self.exit_channel_receiver.clone()
     }
 
-    pub fn read_plugin_content(plugin_name: &String) -> Result<Vec<u8>, KPGError> {
-        let mut data = Vec::new();
-
+    pub fn get_plugin_file_path(plugin_name: &String) -> PathBuf {
         let mut file_path = get_homedir();
         file_path.push(PathBuf::from(PLUGIN_DIRECTORY));
         file_path.push(format!("{}{}", plugin_name, PLUGIN_EXTENSION));
+
+        file_path
+    }
+
+    pub fn read_plugin_content(plugin_name: &String) -> Result<Vec<u8>, KPGError> {
+        let mut data = Vec::new();
+
+        let file_path = KPGFactory::get_plugin_file_path(plugin_name);
         let mut fs = File::open(Path::new(file_path.to_str().unwrap())).map_err(|err| {
             KPGError::new_with_string(KPGFactoryOpenPluginFailed, format!("open plugin file failed. path: {}, error: {}", file_path.to_str().unwrap(), err))
         })?;

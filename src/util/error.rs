@@ -21,6 +21,8 @@ pub enum KPGErrorCode {
     KPGServerMediaServerStopFailed,
     KPGUtilReadDirectoryFailed,
     KPGAPIServerBindFailed,
+    KPGPluginCenterDownloadFailed,
+    KPGPluginCenterGetPluginInformationFailed,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]

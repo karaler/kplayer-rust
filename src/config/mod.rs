@@ -49,8 +49,11 @@ pub struct Playlist {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ResourceTypeGroupPrimaryType {
+    #[serde(rename = "none")]
     None,
+    #[serde(rename = "audio")]
     Audio,
+    #[serde(rename = "video")]
     Video,
 }
 
@@ -107,6 +110,7 @@ pub struct Scene {
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Group {
+    pub ticket: String,
     pub name: String,
     pub app: String,
     pub params: HashMap<String, String>,
@@ -209,6 +213,8 @@ pub struct Instance {
     pub scene: Option<String>,
     pub server: String,
     pub cache: Cache,
+    #[serde(rename = "enable_hardware")]
+    pub enable_hardware: bool,
     pub encode: Encode,
 }
 
