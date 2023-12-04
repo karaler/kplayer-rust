@@ -29,3 +29,4 @@ actix-rt = "2.8.0"
 lazy_static = "1.4.0"
 validator = { version = "0.16.1", features = ["derive"] }
 reqwest = "0.11.22"
+jsonrpc_v2_client = "0.2.1"

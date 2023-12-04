@@ -23,6 +23,8 @@ pub enum KPGErrorCode {
     KPGAPIServerBindFailed,
     KPGPluginCenterDownloadFailed,
     KPGPluginCenterGetPluginInformationFailed,
+    KPGPluginCenterGetFontFailed,
+    KPGJsonRPCFailed,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]

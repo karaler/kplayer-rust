@@ -266,6 +266,14 @@ impl KPGFactory {
         file_path
     }
 
+    pub fn get_font_file_path<T: ToString>(font_name: T) -> PathBuf {
+        let mut file_path = get_homedir();
+        file_path.push(PathBuf::from(PLUGIN_DIRECTORY));
+        file_path.push(format!("{}.ttf", font_name.to_string()));
+
+        file_path
+    }
+
     pub fn read_plugin_content(plugin_name: &String) -> Result<Vec<u8>, KPGError> {
         let mut data = Vec::new();
 
