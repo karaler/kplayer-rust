@@ -43,7 +43,7 @@ impl KPGFactory {
 }
 
 // get font result
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 struct GetFontRequest {
     name: String,
 }
@@ -69,7 +69,7 @@ fn plugin_center_get_font(url: &String, name: &String) -> Result<GetFontResponse
 
 
 // get plugin information
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 struct PluginInformationRequest {
     app: String,
     version: Vec<String>,
