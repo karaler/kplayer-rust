@@ -34,6 +34,10 @@ impl ParseConfig for Version300 {
                         playlist.name = playlist_item.get("name").ok_or(KPGError::new_with_str(KPGConfigParseFailed, "playlist name can not be empty"))?
                             .as_str().ok_or(KPGError::new_with_str(KPGConfigParseFailed, "playlist name invalid json format"))?
                             .to_string();
+                        playlist.enable_hardware = match playlist_item.get("enable_hardware") {
+                            None => true,
+                            Some(get_enable_hardware) => get_enable_hardware.as_bool().unwrap_or(true),
+                        };
                         playlist.start_point = match playlist_item.get("start_point") {
                             None => 0,
                             Some(val) => {

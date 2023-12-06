@@ -154,7 +154,7 @@ pub async fn select_instance_media(name: web::Path<String>, body: web::Json<Sele
 pub async fn get_instance_plugin(name: web::Path<String>) -> HttpResponse {
     let global_console = get_global_console();
     let console = global_console.lock().await;
-    let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransferGetPluginList {}) {
+    let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformGetPluginList {}) {
         Ok(receipt) => receipt,
         Err(err) => {
             return HttpResponse::UnprocessableEntity().json(&err);
@@ -213,7 +213,7 @@ pub async fn get_instance_info(path: web::Path<String>) -> HttpResponse {
     let receipt = match console.issue(
         KPConsoleModule::Transform,
         instance_name.to_string(),
-        TransferGetBasicInfo {},
+        TransformGetBasicInfo {},
     ) {
         Ok(receipt) => receipt,
         Err(err) => {
@@ -232,7 +232,7 @@ pub async fn get_instance_encode_parameter(path: web::Path<String>) -> HttpRespo
     let receipt = match console.issue(
         KPConsoleModule::Transform,
         instance_name.to_string(),
-        TransferGetEncodeParameter {},
+        TransformGetEncodeParameter {},
     ) {
         Ok(receipt) => receipt,
         Err(err) => {

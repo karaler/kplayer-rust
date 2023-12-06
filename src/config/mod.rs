@@ -32,6 +32,8 @@ pub struct Root {
 #[serde(rename_all = "camelCase")]
 pub struct Playlist {
     pub name: String,
+    #[serde(rename = "enable_hardware")]
+    pub enable_hardware: bool,
     pub resource: Vec<ResourceType>,
     #[serde(rename = "start_point")]
     pub start_point: usize,

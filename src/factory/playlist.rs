@@ -27,7 +27,7 @@ impl KPGFactory {
                 for res in pl.resource.iter() {
                     match res {
                         ResourceType::ResourceSingle { path } => {
-                            let mut media = KPMedia::new(KPMediaResource::SingleSource { path: path.clone() }, None, None, None);
+                            let mut media = KPMedia::new(KPMediaResource::SingleSource { path: path.clone() }, None, None, None, Some(pl.enable_hardware));
                             let open_result = media.open();
                             if let Err(err) = open_result {
                                 warn!("add media to playlist failed. playlist: {}, media: {}, error: {}", pl.name,path,err)
@@ -41,7 +41,7 @@ impl KPGFactory {
                         }
                         ResourceType::ResourceDirectory { directory, extension } => {
                             for file in read_directory_file(directory.clone(), extension.clone())? {
-                                let mut media = KPMedia::new(KPMediaResource::SingleSource { path: file.clone() }, None, None, None);
+                                let mut media = KPMedia::new(KPMediaResource::SingleSource { path: file.clone() }, None, None, None, Some(pl.enable_hardware));
                                 if let Err(err) = media.open() {
                                     warn!("add media to playlist failed. playlist: {}, media: {}, error: {}", pl.name,file,err)
                                 } else {
@@ -61,7 +61,7 @@ impl KPGFactory {
                                 if get_stream.subtitle >= 0 { expect_streams.insert(KPAVMediaType::KPAVMEDIA_TYPE_SUBTITLE, get_stream.subtitle as u32); }
                             }
 
-                            let mut media = KPMedia::new(KPMediaResource::SingleSource { path: path.clone() }, name.clone(), seek.clone(), end.clone());
+                            let mut media = KPMedia::new(KPMediaResource::SingleSource { path: path.clone() }, name.clone(), seek.clone(), end.clone(), Some(pl.enable_hardware));
                             media.set_expect_stream_index(expect_streams);
                             if let Err(err) = media.open() {
                                 warn!("add media to playlist failed. playlist: {}, media: {}, error: {}", pl.name,path,err)
@@ -98,7 +98,7 @@ impl KPGFactory {
                                         }
                                     }
                                 },
-                            }, name.clone(), seek.clone(), end.clone());
+                            }, name.clone(), seek.clone(), end.clone(), Some(pl.enable_hardware));
                             media.set_expect_stream_index(expect_streams);
                             if let Err(err) = media.open() {
                                 warn!("add media to playlist failed. playlist: {}, media: {}, error: {}",pl.name, media.get_name(),err)

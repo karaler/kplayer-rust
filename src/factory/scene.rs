@@ -7,7 +7,7 @@ use crate::config::Root;
 use crate::factory::KPGFactory;
 use crate::util::error::KPGError;
 use crate::util::error::KPGErrorCode::{*};
-use crate::util::file::{compare_md5, download_file, find_existed_file};
+use crate::util::file::{compare_md5, download_file};
 use crate::util::jsonrpc::jsonrpc_call;
 
 impl KPGFactory {
