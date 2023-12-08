@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use libkplayer::bindings::getiopolicy_np;
 use libkplayer::codec::transform::KPTransform;
 use libkplayer::plugin::plugin::KPPlugin;
 use libkplayer::server::media_pusher::KPMediaPusher;
@@ -46,7 +47,8 @@ impl KPGFactory {
                         source
                     }
                     Some(get_ins) => {
-                        let ins = get_ins.lock().unwrap();
+                        let transform = { get_ins.lock().unwrap().transform.clone() };
+                        let ins = transform.lock().unwrap();
                         ins.get_output_url()
                     }
                 };

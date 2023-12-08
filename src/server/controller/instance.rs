@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::ops::Deref;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, RwLock, TryLockResult};
 use actix_web::{get, post, HttpResponse, web};
 use actix_web::test::read_body;
 use libkplayer::codec::component::media::KPMedia;
@@ -14,6 +14,26 @@ use serde_json::json;
 use crate::{GLOBAL_FACTORY, validate_and_respond_unprocessable_entity};
 use crate::config::ResourceType;
 use validator::{Validate, ValidationError};
+
+// Instance
+#[derive(Serialize)]
+struct GetInstanceInfo {
+    play_list: String,
+}
+
+#[get("/instance")]
+pub async fn get_instance_list() -> HttpResponse {
+    let factory = GLOBAL_FACTORY.lock().unwrap();
+    let mut instance_list = HashMap::new();
+
+    for get_instance_name in factory.get_instance_list() {
+        let get_factory = factory.get_instance(&get_instance_name).unwrap();
+        let get_instance = get_factory.lock().unwrap();
+        instance_list.insert(get_instance_name, get_instance.clone());
+    }
+
+    HttpResponse::Ok().json(instance_list)
+}
 
 // PlayList
 #[get("/instance/{name}/playlist")]

@@ -36,22 +36,32 @@ impl KPGApi {
             let name = self.name.clone();
 
             let server = HttpServer::new(|| {
-                App::new().wrap(middleware::Logger::default())
-                    .app_data(web::JsonConfig::default().limit(MAX_JSON_BODY))
+                let mut app = App::new().wrap(middleware::Logger::default())
+                    .app_data(web::JsonConfig::default().limit(MAX_JSON_BODY));
+
+                // instance
+                {
+                    // list
+                    app = app.service(get_instance_list);
+
                     // playlist
-                    .service(get_instance_playlist)
-                    .service(get_instance_current)
-                    .service(post_instance_skip)
-                    .service(add_instance_media)
-                    .service(remove_instance_media)
-                    .service(seek_instance_media)
-                    .service(select_instance_media)
+                    app = app.service(get_instance_playlist)
+                        .service(get_instance_current)
+                        .service(post_instance_skip)
+                        .service(add_instance_media)
+                        .service(remove_instance_media)
+                        .service(seek_instance_media)
+                        .service(select_instance_media);
+
                     // basic
-                    .service(get_instance_info)
-                    .service(get_instance_encode_parameter)
+                    app = app.service(get_instance_info)
+                        .service(get_instance_encode_parameter);
+
                     // plugin
-                    .service(get_instance_plugin)
-                    .service(update_instance_plugin_argument)
+                    app = app.service(get_instance_plugin)
+                        .service(update_instance_plugin_argument);
+                }
+                app
             }).bind((self.address.as_str(), self.port)).map_err(|err| {
                 KPGError::new_with_string(KPGAPIServerBindFailed, format!("address: {}, port: {}, error: {}", address, port, err))
             })?.run();

@@ -5,9 +5,10 @@ use libkplayer::plugin::plugin::KPPlugin;
 use libkplayer::util::kpcodec::kpencode_parameter::{KPEncodeParameterItem, KPEncodeParameterItemPreset, KPEncodeParameterItemProfile};
 use log::info;
 use crate::config::{Root, ServerSchema};
-use crate::factory::KPGFactory;
+use crate::factory::{KPGFactory, KPGFactoryInstance};
 use crate::util::error::KPGError;
 use crate::util::error::KPGErrorCode::KPGFactoryParseConfigFailed;
+use crate::util::time::current_mill_timestamp;
 
 impl KPGFactory {
     pub(super) fn create_instance(&mut self, cfg: &Root) -> Result<(), KPGError> {
@@ -135,7 +136,14 @@ impl KPGFactory {
                 }
 
                 info!("create instance success. name: {}, playlist: {}, scene: {:?}, server: {}",ins.name,ins.playlist,ins.scene,ins.server);
-                instances.insert(ins.name.clone(), Arc::new(Mutex::new(transform)));
+                instances.insert(ins.name.clone(), Arc::new(Mutex::new(KPGFactoryInstance {
+                    playlist: ins.playlist.clone(),
+                    scene: ins.scene.clone(),
+                    server: ins.server.clone(),
+                    is_launched: false,
+                    created_at: current_mill_timestamp(),
+                    transform: Arc::new(Mutex::new(transform)),
+                })));
             }
 
             instances

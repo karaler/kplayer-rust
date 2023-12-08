@@ -1,5 +1,6 @@
 use std::fmt::{Debug, Display, Formatter};
 use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct KPDuration {
     duration: Duration,
@@ -27,4 +28,9 @@ impl Debug for KPDuration {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "KPDuration({}s / {})", self.duration.as_secs().clone(), self.to_string())
     }
+}
+
+pub fn current_mill_timestamp() -> u128 {
+    let current_time = SystemTime::now();
+    current_time.duration_since(UNIX_EPOCH).unwrap().as_millis()
 }

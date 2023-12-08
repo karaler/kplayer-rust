@@ -29,6 +29,7 @@ use libkplayer::util::kpcodec::avmedia_type::KPAVMediaType;
 use libkplayer::util::kpcodec::kpencode_parameter::{KPEncodeParameterItem, KPEncodeParameterItemPreset, KPEncodeParameterItemProfile};
 use libkplayer::util::message::{KPMessage, MessageAction};
 use log::{debug, error, info, warn};
+use serde::Serialize;
 use crate::config::{OutputType, Playlist, ResourceType, Root, ServerSchema, ServerType};
 use crate::config::env::get_homedir;
 use crate::factory::output::KPGOutput;
@@ -59,12 +60,24 @@ pub struct ThreadResult {
     pub thread_type: ThreadType,
 }
 
+#[derive(Clone, Serialize)]
+pub struct KPGFactoryInstance {
+    #[serde(skip)]
+    pub transform: Arc<Mutex<KPTransform>>,
+
+    pub playlist: String,
+    pub scene: Option<String>,
+    pub server: String,
+    pub is_launched: bool,
+    pub created_at: u128,
+}
+
 pub struct KPGFactory {
     playlist: HashMap<String, KPPlayList>,
     scene: HashMap<String, HashMap<String, KPPlugin>>,
     output: HashMap<String, KPGOutput>,
     server: HashMap<String, Arc<Mutex<Box<dyn KPGServer>>>>,
-    instance: HashMap<String, Arc<Mutex<KPTransform>>>,
+    instance: HashMap<String, Arc<Mutex<KPGFactoryInstance>>>,
 
     // thread
     exit_channel_sender: SyncSender<(ThreadResult, Result<(), KPGError>)>,
@@ -143,18 +156,18 @@ impl KPGFactory {
         instance_name
     }
 
-    pub fn get_instance(&self, name: &String) -> Option<Arc<Mutex<KPTransform>>> {
+    pub fn get_instance(&self, name: &String) -> Option<Arc<Mutex<KPGFactoryInstance>>> {
         match self.instance.get(name) {
             None => None,
-            Some(transform) => {
-                Some(transform.clone())
+            Some(instance) => {
+                Some(instance.clone())
             }
         }
     }
 
     pub fn launch_instance(&mut self, name: &String) -> Result<ThreadResult, KPGError> {
-        let transform = self.instance.get(name).unwrap();
-        let transform_clone = transform.clone();
+        let instance = self.instance.get(name).unwrap();
+        let instance_clone = instance.clone();
         let exit_sender_clone = self.exit_channel_sender.clone();
 
         let thread_result = ThreadResult {
@@ -165,11 +178,25 @@ impl KPGFactory {
 
         let thread_result_clone = thread_result.clone();
         std::thread::spawn(move || {
-            let mut get_transform = transform_clone.lock().unwrap();
+            let transform = {
+                let mut get_instance = instance_clone.lock().unwrap();
+                get_instance.is_launched = true;
+                get_instance.transform.clone()
+            };
+
+            let mut get_transform = transform.lock().unwrap();
             let name = get_transform.get_name();
 
             // launch
             let result = get_transform.launch();
+
+            // set launched status
+            {
+                let mut get_instance = instance_clone.lock().unwrap();
+                get_instance.is_launched = false;
+            }
+
+            // send exit signal
             let exit_result = match result {
                 Ok(_) => {
                     Ok(())
