@@ -47,6 +47,7 @@ impl KPGApi {
                     // playlist
                     app = app.service(get_instance_playlist)
                         .service(get_instance_current)
+                        .service(post_instance_prev)
                         .service(post_instance_skip)
                         .service(add_instance_media)
                         .service(remove_instance_media)

@@ -64,6 +64,20 @@ pub async fn get_instance_current(name: web::Path<String>) -> HttpResponse {
     HttpResponse::Ok().json(receipt)
 }
 
+#[post("/instance/{name}/playlist/prev")]
+pub async fn post_instance_prev(name: web::Path<String>) -> HttpResponse {
+    let global_console = get_global_console();
+    let console = global_console.lock().await;
+    let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformPrevPlayList {}) {
+        Ok(receipt) => receipt,
+        Err(err) => {
+            return HttpResponse::UnprocessableEntity().json(&err);
+        }
+    };
+
+    HttpResponse::Ok().json(receipt)
+}
+
 #[post("/instance/{name}/playlist/skip")]
 pub async fn post_instance_skip(name: web::Path<String>) -> HttpResponse {
     let global_console = get_global_console();
