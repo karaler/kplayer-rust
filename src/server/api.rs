@@ -51,6 +51,7 @@ impl KPGApi {
                         .service(post_instance_skip)
                         .service(add_instance_media)
                         .service(remove_instance_media)
+                        .service(move_instance_media)
                         .service(seek_instance_media)
                         .service(select_instance_media);
 

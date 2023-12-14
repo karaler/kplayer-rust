@@ -131,6 +131,32 @@ pub async fn remove_instance_media(name: web::Path<String>, body: web::Json<Remo
 }
 
 #[derive(Deserialize, Validate)]
+pub struct MoveInstanceMedia {
+    #[validate(length(min = 1))]
+    name: String,
+    index: usize,
+}
+
+#[post("/instance/{name}/playlist/move")]
+pub async fn move_instance_media(name: web::Path<String>, body: web::Json<MoveInstanceMedia>) -> HttpResponse {
+    validate_and_respond_unprocessable_entity!(body);
+
+    let global_console = get_global_console();
+    let console = global_console.lock().await;
+    let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformMoveMediaPlayList {
+        name: body.name.clone(),
+        index: body.index.clone(),
+    }) {
+        Ok(receipt) => receipt,
+        Err(err) => {
+            return HttpResponse::UnprocessableEntity().json(&err);
+        }
+    };
+
+    HttpResponse::Ok().json(receipt)
+}
+
+#[derive(Deserialize, Validate)]
 pub struct SeekInstanceMedia {
     seek: Option<i32>,
     end: Option<i32>,
