@@ -1,9 +1,9 @@
 use crate::config::ServerSchema;
 use crate::util::error::KPGError;
 
+pub mod media;
+pub mod http;
 pub mod api;
-pub mod media_server;
-pub mod controller;
 
 pub struct ServerContext {
     pub name: String,

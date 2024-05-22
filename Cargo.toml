@@ -21,12 +21,16 @@ md5 = "0.7.0"
 hex = "0.4.3"
 rand = "0.8.5"
 json5 = "0.4.1"
-fern = { version = "0.6.2", features = ["colored","chrono"] }
+fern = { version = "0.6.2", features = ["colored", "chrono"] }
 humantime = "2.1.0"
 bus = "2.4.0"
 actix-web = "4.3.1"
 actix-rt = "2.8.0"
 lazy_static = "1.4.0"
-validator = { version = "0.16.1", features = ["derive"] }
-reqwest = "0.11.22"
+validator = { version = "0.18.1", features = ["derive"] }
+reqwest = {version = "0.12.4", features = ["blocking"]}
 jsonrpc_v2_client = "0.2.1"
+xiu = { path = "third-parts/xiu/application/xiu" }
+anyhow = "1.0.86"
+tokio = { version = "1.37.0", features = ["full"] }
+env_logger = "0.11.3"

@@ -3,7 +3,6 @@ use fern::colors::{Color, ColoredLevelConfig};
 use libkplayer::bindings::exception;
 use libkplayer::codec::component::media::KPMedia;
 use libkplayer::codec::playlist::{KPPlayList, PlayModel};
-use libkplayer::server::media_server::KPMediaServer;
 use libkplayer::util::error::KPError;
 use libkplayer::util::kpcodec::kpencode_parameter::{KPEncodeParameterItem};
 use libkplayer::util::logger::LogLevel;

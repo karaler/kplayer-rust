@@ -1,8 +1,7 @@
 pub mod playlist;
 pub mod instance;
 
-use std::collections::HashMap;
-use actix_web::{HttpResponse, Responder};
+use actix_web::{Responder};
 use validator::Validate;
 
 #[macro_export]
