@@ -1,5 +1,6 @@
 pub mod playlist;
 pub mod instance;
+pub mod api;
 
 use actix_web::{Responder};
 use validator::Validate;

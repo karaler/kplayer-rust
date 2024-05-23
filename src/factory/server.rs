@@ -4,8 +4,8 @@ use libkplayer::plugin::plugin::KPPlugin;
 use log::info;
 use crate::config::{Root, ServerSchema, ServerType};
 use crate::factory::KPGFactory;
-use crate::server::api::KPGApi;
-use crate::server::KPGServer;
+use crate::server::http::api::KPGHttp;
+use crate::server::{KPGServer, ServerContext};
 use crate::server::media::KPMediaServer;
 use crate::util::error::KPGError;
 use crate::util::error::KPGErrorCode::KPGFactoryParseConfigFailed;
@@ -20,16 +20,33 @@ impl KPGFactory {
                         return Err(KPGError::new_with_string(KPGFactoryParseConfigFailed, format!("invalid server schema. schema: {:?}", srv.target)));
                     }
                     ServerType::Media => {
-                        let mut media_server = KPMediaServer::new();
+                        let mut contexts = Vec::new();
+
                         for g in srv.group.iter() {
                             match g.schema {
-                                ServerSchema::Rtmp => {}
-                                ServerSchema::Http => {}
+                                ServerSchema::Rtmp => {
+                                    contexts.push(ServerContext {
+                                        schema: g.schema.clone(),
+                                        name: g.name.clone(),
+                                        address: g.address.clone(),
+                                        port: g.port.clone(),
+                                    })
+                                }
+                                ServerSchema::Http => {
+                                    contexts.push(ServerContext {
+                                        schema: g.schema.clone(),
+                                        name: g.name.clone(),
+                                        address: g.address.clone(),
+                                        port: g.port.clone(),
+                                    })
+                                }
                                 _ => {
                                     return Err(KPGError::new_with_string(KPGFactoryParseConfigFailed, format!("not support media server schema. schema: {:?}", g.schema)));
                                 }
                             };
                         }
+
+                        let media_server = KPMediaServer::new(srv.name.clone(), contexts);
                         info!("create media server success. type: {:?}, server: {}",srv.target, srv.name);
                         servers.insert(srv.name.clone(), Arc::new(Mutex::new(Box::new(media_server))));
                     }
@@ -37,7 +54,13 @@ impl KPGFactory {
                         for g in srv.group.iter() {
                             match g.schema {
                                 ServerSchema::Http => {
-                                    servers.insert(srv.name.clone(), Arc::new(Mutex::new(Box::new(KPGApi::new(g.name.clone(), g.address.clone(), g.port.clone())))));
+                                    let http = KPGHttp::new(g.name.clone(), vec![ServerContext {
+                                        schema: ServerSchema::Http,
+                                        name: g.name.clone(),
+                                        address: g.address.clone(),
+                                        port: g.port.clone(),
+                                    }])?;
+                                    servers.insert(srv.name.clone(), Arc::new(Mutex::new(Box::new(http))));
                                     info!("create api server success. type: {:?}, server: {}, address: {}, port: {}",srv.target, srv.name, g.address,g.port);
                                 }
                                 _ => {

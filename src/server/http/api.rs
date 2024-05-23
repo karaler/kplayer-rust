@@ -4,12 +4,13 @@ use actix_web::{App, HttpServer, middleware};
 use log::info;
 use crate::config::ServerSchema;
 use crate::server::{KPGServer, ServerContext};
-use crate::util::error::KPGError;
-use crate::util::error::KPGErrorCode::KPGAPIServerBindFailed;
+use crate::util::error::{KPGError, KPGErrorCode};
+use crate::util::error::KPGErrorCode::*;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex, RwLock, TryLockResult};
 use actix_web::{get, post, HttpResponse, web};
+use actix_web::dev::{HttpServiceFactory, Server};
 use actix_web::test::read_body;
 use libkplayer::codec::component::media::KPMedia;
 use libkplayer::codec::transform::KPTransform;
@@ -24,31 +25,43 @@ use crate::config::ResourceType;
 use validator::{Validate, ValidationError};
 use crate::server::http::instance::*;
 use crate::server::http::playlist::*;
+use anyhow::Result;
+use async_trait::async_trait;
 
 
 const MAX_JSON_BODY: usize = 1024 * 1024;
 
-pub struct KPGApi {
+pub struct KPGHttp {
     name: String,
-    address: String,
-    port: u16,
+    server_context: Vec<ServerContext>,
 }
 
-impl KPGApi {
-    pub fn new(name: String, address: String, port: u16) -> KPGApi {
-        KPGApi { name, address, port }
+impl KPGHttp {
+    pub fn new(name: String, server_context: Vec<ServerContext>) -> Result<KPGHttp, KPGError> {
+        for ctx in server_context.iter() {
+            if ctx.schema != ServerSchema::Http {
+                return Err(KPGError::new_with_string(KPGServerNotSupportSchema, format!("not support schema on http server. context: {:?}", ctx)));
+            }
+        }
+        Ok(KPGHttp {
+            name,
+            server_context,
+        })
     }
 
-    pub fn run(&self) -> Result<(), KPGError> {
-        actix_rt::System::new().block_on(async {
-            let address = self.address.clone();
-            let port = self.port.clone();
-            let name = self.name.clone();
+    async fn run(&self) -> Result<(), KPGError> {
+        Ok(())
+    }
+}
 
+#[async_trait]
+impl KPGServer for KPGHttp {
+    async fn start(&mut self) -> Result<(), KPGError> {
+        for ctx in self.server_context.iter() {
             let server = HttpServer::new(|| {
-                let mut app = App::new().wrap(middleware::Logger::default())
+                let mut app = App::new()
+                    .wrap(middleware::Logger::default())
                     .app_data(web::JsonConfig::default().limit(MAX_JSON_BODY));
-
                 // instance
                 {
                     // list
@@ -74,53 +87,30 @@ impl KPGApi {
                         .service(update_instance_plugin_argument);
                 }
                 app
-            }).bind((self.address.as_str(), self.port)).map_err(|err| {
-                KPGError::new_with_string(KPGAPIServerBindFailed, format!("address: {}, port: {}, error: {}", address, port, err))
+            }).bind((ctx.address.as_str(), ctx.port)).map_err(|err| {
+                KPGError::new_with_string(KPGAPIServerBindFailed, format!("context: {:?}, error: {}", ctx, err))
             })?.run();
 
-            let wait_signal = async move {
-                return match actix_rt::signal::ctrl_c().await {
-                    Ok(_) => {
-                        info!("receive [Ctrl-C] signal. please wait, cleaning up resources.");
-                        actix_rt::System::current().stop();
-                        Ok(())
-                    }
-                    Err(err) => {
-                        Err(KPGError::new_with_string(KPGAPIServerBindFailed, format!("register signal failed. name: {}, error: {}", name, err)))
-                    }
-                };
-            };
-            actix_rt::spawn(wait_signal);
-
-            info!("api server listen success. address: {}, port: {}", self.address,self.port);
             server.await.map_err(|err| {
-                KPGError::new_with_string(KPGAPIServerBindFailed, format!("register signal failed. name: {}, error: {}", self.name, err))
+                KPGError::new_with_string(KPGAPIServerStartFailed, format!("context: {:?}, error: {}", ctx, err))
             })?;
-            info!("api server shutdown success. address: {}, port: {}", self.address,self.port);
-            Ok(())
-        })
-    }
-}
 
-impl KPGServer for KPGApi {
-    fn start(&mut self) -> Result<(), KPGError> {
-        self.run()?;
+            info!("api server listen success. context: {:?}", ctx);
+        }
         Ok(())
     }
 
-    fn stop(&mut self) -> Result<(), KPGError> {
+    async fn stop(&mut self) -> Result<(), KPGError> {
         Ok(())
-    }
-
-    fn get_schema(&self, schema: ServerSchema) -> Option<ServerContext> {
-        Some(ServerContext {
-            name: self.name.clone(),
-            address: self.address.clone(),
-            port: self.port.clone() as u32,
-        })
     }
 
     fn get_name(&self) -> String {
         self.name.clone()
+    }
+
+    fn get_context(&self, name: String) -> Option<ServerContext> {
+        self.server_context.iter().find(|&item| {
+            item.name == name
+        }).cloned()
     }
 }

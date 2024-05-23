@@ -129,7 +129,7 @@ impl KPGFactory {
                         self.server.get(&ins.server).unwrap()
                     };
                     let server_guard = get_server.lock().unwrap();
-                    if let Some(ctx) = server_guard.get_schema(ServerSchema::Rtmp) {
+                    if let Some(ctx) = server_guard.get_context(ins.name.clone()) {
                         info!("Using name {} as the instance for streaming server. instance: {}", ctx.name, ins.server);
                         transform.set_output_url(KPGFactory::get_instance_source(ins.name.clone(), ctx.port))
                     }

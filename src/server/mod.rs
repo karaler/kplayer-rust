@@ -1,19 +1,22 @@
 use crate::config::ServerSchema;
 use crate::util::error::KPGError;
+use async_trait::async_trait;
 
 pub mod media;
 pub mod http;
-pub mod api;
 
+#[derive(Clone, Debug)]
 pub struct ServerContext {
+    pub schema: ServerSchema,
     pub name: String,
     pub address: String,
-    pub port: u32,
+    pub port: u16,
 }
 
+#[async_trait]
 pub trait KPGServer: Send + Sync {
-    fn start(&mut self) -> Result<(), KPGError>;
-    fn stop(&mut self) -> Result<(), KPGError>;
-    fn get_schema(&self, schema: ServerSchema) -> Option<ServerContext>;
+    async fn start(&mut self) -> Result<(), KPGError>;
+    async fn stop(&mut self) -> Result<(), KPGError>;
     fn get_name(&self) -> String;
+    fn get_context(&self, name: String) -> Option<ServerContext>;
 }
