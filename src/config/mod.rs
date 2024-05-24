@@ -1,21 +1,21 @@
+use crate::config::version::version_300::Version300;
+use crate::config::version::ParseConfig;
+use crate::util::error::KPGError;
+use crate::util::error::KPGErrorCode::KPGConfigFileOpenFailed;
+use crate::util::file::find_existed_file;
+use enum_display::EnumDisplay;
+use libkplayer::codec::playlist::KPPlayList;
+use log::info;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 use std::sync::mpsc::RecvError;
-use enum_display::EnumDisplay;
-use libkplayer::codec::playlist::KPPlayList;
-use log::info;
-use serde::{Deserialize, Serialize};
 use uuid::Version;
-use crate::config::version::ParseConfig;
-use crate::config::version::version_300::Version300;
-use crate::util::error::KPGError;
-use crate::util::error::KPGErrorCode::KPGConfigFileOpenFailed;
-use crate::util::file::find_existed_file;
 
-pub mod version;
 pub mod env;
+pub mod version;
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -128,7 +128,9 @@ pub struct Output {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum OutputType {
-    OutputSingle { path: String },
+    OutputSingle {
+        path: String,
+    },
     OutputDetail {
         name: String,
         #[serde(rename = "reconnect_internal")]
@@ -163,7 +165,9 @@ pub struct ServerGroup {
     pub schema: ServerSchema,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, EnumDisplay, Hash, Ord, PartialOrd, Eq)]
+#[derive(
+    Debug, Clone, PartialEq, Serialize, Deserialize, EnumDisplay, Hash, Ord, PartialOrd, Eq,
+)]
 pub enum ServerType {
     None,
     Media,
@@ -178,22 +182,21 @@ impl Default for ServerType {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, EnumDisplay)]
 pub enum ServerTokenType {
-    SingleToken {
-        token: String
-    },
-    CSToken {
-        server: String,
-        client: String,
-    },
+    SingleToken { token: String },
+    CSToken { server: String, client: String },
 }
 
 impl Default for ServerTokenType {
     fn default() -> Self {
-        ServerTokenType::SingleToken { token: String::default() }
+        ServerTokenType::SingleToken {
+            token: String::default(),
+        }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, EnumDisplay, Ord, PartialOrd, Eq, Hash)]
+#[derive(
+    Debug, Clone, PartialEq, Serialize, Deserialize, EnumDisplay, Ord, PartialOrd, Eq, Hash,
+)]
 #[serde(rename_all = "camelCase")]
 pub enum ServerSchema {
     None,
@@ -267,20 +270,37 @@ pub fn parse_file() -> Result<Root, KPGError> {
         let search_config_path = vec!["config.json", "config.json5"];
         match find_existed_file(search_config_path.clone()) {
             None => {
-                return Err(KPGError::new_with_string(KPGConfigFileOpenFailed, format!("not found config file. search_config_path: {:?}", search_config_path)));
+                return Err(KPGError::new_with_string(
+                    KPGConfigFileOpenFailed,
+                    format!(
+                        "not found config file. search_config_path: {:?}",
+                        search_config_path
+                    ),
+                ));
             }
             Some(val) => val,
         }
     };
     let mut file = File::open(path.clone()).map_err(|err| {
-        KPGError::new_with_string(KPGConfigFileOpenFailed, format!("open config file failed. path: {:?}, error: {:?}", path, err))
+        KPGError::new_with_string(
+            KPGConfigFileOpenFailed,
+            format!(
+                "open config file failed. path: {:?}, error: {:?}",
+                path, err
+            ),
+        )
     })?;
 
     let mut buf = Vec::new();
     file.read_to_end(&mut buf).map_err(|err| {
-        KPGError::new_with_string(KPGConfigFileOpenFailed, format!("read config file failed. path: {:?}, error: {:?}", path, err))
+        KPGError::new_with_string(
+            KPGConfigFileOpenFailed,
+            format!(
+                "read config file failed. path: {:?}, error: {:?}",
+                path, err
+            ),
+        )
     })?;
-
 
     // @TODO 多版本配置文件适配
     let get_version = "3.0.0";
@@ -292,12 +312,18 @@ pub fn parse_file() -> Result<Root, KPGError> {
     // use json5
     {
         let file_context = String::from_utf8(buf).unwrap();
-        let serde_json_parsed: serde_json::Value = json5::from_str(file_context.as_str()).map_err(|err| {
-            KPGError::new_with_string(KPGConfigFileOpenFailed, format!("parse json5 format failed. path: {:?}, error: \n{}", path, err))
-        })?;
+        let serde_json_parsed: serde_json::Value =
+            json5::from_str(file_context.as_str()).map_err(|err| {
+                KPGError::new_with_string(
+                    KPGConfigFileOpenFailed,
+                    format!(
+                        "parse json5 format failed. path: {:?}, error: \n{}",
+                        path, err
+                    ),
+                )
+            })?;
         buf = serde_json_parsed.to_string().into_bytes();
     }
-
 
     let cfg = version.parse(&buf)?;
     Ok(cfg)

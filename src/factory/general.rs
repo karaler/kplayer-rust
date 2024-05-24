@@ -1,18 +1,14 @@
+use crate::config::env::get_homedir;
+use crate::factory::{KPGFactory, ThreadResult, PLUGIN_DIRECTORY, PLUGIN_EXTENSION};
+use crate::util::error::KPGError;
+use crate::util::error::KPGErrorCode::KPGFactoryOpenPluginFailed;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
-use crate::config::env::get_homedir;
-use crate::factory::{KPGFactory, PLUGIN_DIRECTORY, PLUGIN_EXTENSION, ThreadResult};
-use crate::util::error::KPGError;
-use crate::util::error::KPGErrorCode::KPGFactoryOpenPluginFailed;
 
 impl KPGFactory {
-    pub fn get_exit_receiver(&self) -> Arc<Mutex<Receiver<(ThreadResult, Result<(), KPGError>)>>> {
-        self.exit_channel_receiver.clone()
-    }
-
     pub fn get_plugin_file_path(plugin_name: &String) -> PathBuf {
         let mut file_path = get_homedir();
         file_path.push(PathBuf::from(PLUGIN_DIRECTORY));
@@ -34,10 +30,24 @@ impl KPGFactory {
 
         let file_path = KPGFactory::get_plugin_file_path(plugin_name);
         let mut fs = File::open(Path::new(file_path.to_str().unwrap())).map_err(|err| {
-            KPGError::new_with_string(KPGFactoryOpenPluginFailed, format!("open plugin file failed. path: {}, error: {}", file_path.to_str().unwrap(), err))
+            KPGError::new_with_string(
+                KPGFactoryOpenPluginFailed,
+                format!(
+                    "open plugin file failed. path: {}, error: {}",
+                    file_path.to_str().unwrap(),
+                    err
+                ),
+            )
         })?;
         fs.read_to_end(&mut data).map_err(|err| {
-            KPGError::new_with_string(KPGFactoryOpenPluginFailed, format!("read plugin file failed. path: {}, error: {}", file_path.to_str().unwrap(), err))
+            KPGError::new_with_string(
+                KPGFactoryOpenPluginFailed,
+                format!(
+                    "read plugin file failed. path: {}, error: {}",
+                    file_path.to_str().unwrap(),
+                    err
+                ),
+            )
         })?;
 
         Ok(data)
@@ -51,5 +61,3 @@ impl KPGFactory {
         format!("cache/{}", name)
     }
 }
-
-

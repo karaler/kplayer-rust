@@ -1,14 +1,20 @@
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::fs::File;
-use std::io::{self, Read, Write};
-use md5;
 use crate::util::error::KPGError;
 use crate::util::error::KPGErrorCode::KPGUtilReadDirectoryFailed;
+use md5;
+use std::fs;
+use std::fs::File;
+use std::io::{self, Read, Write};
+use std::path::{Path, PathBuf};
 
-pub fn read_directory_file(path: String, ext_filters: Vec<String>) -> Result<Vec<String>, KPGError> {
+pub fn read_directory_file(
+    path: String,
+    ext_filters: Vec<String>,
+) -> Result<Vec<String>, KPGError> {
     let entries = fs::read_dir(path.clone()).map_err(|err| {
-        KPGError::new_with_string(KPGUtilReadDirectoryFailed, format!("read directory failed. path: {:?}, error: {}", path, err))
+        KPGError::new_with_string(
+            KPGUtilReadDirectoryFailed,
+            format!("read directory failed. path: {:?}, error: {}", path, err),
+        )
     })?;
 
     let mut files = Vec::new();
@@ -30,7 +36,7 @@ pub fn read_directory_file(path: String, ext_filters: Vec<String>) -> Result<Vec
 }
 
 pub fn find_existed_file<T: ToString>(files: Vec<T>) -> Option<String> {
-    let path_lists: Vec<_> = files.iter().map(|item| { item.to_string() }).collect();
+    let path_lists: Vec<_> = files.iter().map(|item| item.to_string()).collect();
     for file in &path_lists {
         if let Ok(metadata) = fs::metadata(file) {
             if metadata.is_file() {

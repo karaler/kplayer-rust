@@ -1,39 +1,78 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use libkplayer::bindings::getiopolicy_np;
-use libkplayer::codec::transform::KPTransform;
-use libkplayer::plugin::plugin::KPPlugin;
-use log::info;
 use crate::config::{OutputType, Root};
 use crate::factory::KPGFactory;
 use crate::util::error::KPGError;
 use crate::util::rand::rand_string;
+use libkplayer::bindings::{getiopolicy_np, nan};
+use libkplayer::codec::transform::KPTransform;
+use libkplayer::plugin::plugin::KPPlugin;
+use log::info;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use xiu::config::{Config, RtmpConfig, RtmpPullConfig, RtmpPushConfig};
+use xiu::service::Service;
+use crate::server::ServerContext;
+use anyhow::Result;
 
-#[derive(Clone)]
 pub(super) struct KPGOutput {
-    source_name: String,
+    name: String,
+    config: Config,
+    service: Service,
+    source_path: String,
     push_path: String,
 }
 
 impl KPGOutput {
-    pub fn new(source_name: String, push_path: String) -> Self {
+    pub fn new<T: ToString>(name: T, source_path: T, push_path: T) -> Self {
+        let mut cfg = Config::new(0, 0, 0, 0, 0, "error".to_string());
+        cfg.rtmp = Some(RtmpConfig {
+            enabled: true,
+            port: 0,
+            gop_num: None,
+            pull: Some(RtmpPullConfig {
+                enabled: true,
+                address: source_path.to_string(),
+                port: 1935,
+            }),
+            push: Some(vec![
+                RtmpPushConfig {
+                    enabled: true,
+                    address: push_path.to_string(),
+                    port: 1935,
+                }
+            ]),
+            auth: None,
+        });
+        let service = Service::new(cfg.clone());
+
         KPGOutput {
-            source_name,
-            push_path,
+            name: name.to_string(),
+            config: cfg,
+            service,
+            source_path: source_path.to_string(),
+            push_path: push_path.to_string(),
         }
     }
 
-    pub fn get_media_pusher(&self) -> String {
+    pub async fn serve(&mut self) -> Result<()> {
+        self.service.run().await?;
+        Ok(())
+    }
+
+    pub fn get_name(&self) -> String {
+        self.name.clone()
+    }
+
+    pub fn get_push_path(&self) -> String {
         self.push_path.clone()
     }
 
-    pub fn get_source_name(&self) -> String {
-        self.source_name.clone()
+    pub fn get_source_path(&self) -> String {
+        self.source_path.clone()
     }
 }
 
 impl KPGFactory {
-    pub(super) fn create_output(&mut self, cfg: &Root) -> Result<(), KPGError> {
+    pub(super) async fn create_output(&mut self, cfg: &Root) -> Result<(), KPGError> {
         Ok(())
     }
 }

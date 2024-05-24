@@ -1,18 +1,19 @@
-use std::collections::HashMap;
-use std::ops::Deref;
-use std::sync::{Arc, Mutex, RwLock, TryLockResult};
-use actix_web::{get, post, HttpResponse, web};
+use crate::config::ResourceType;
+use crate::factory::{KPGFactory, KPGFactoryInstance};
+use crate::validate_and_respond_unprocessable_entity;
 use actix_web::test::read_body;
+use actix_web::{get, post, web, HttpResponse};
 use libkplayer::codec::component::media::KPMedia;
 use libkplayer::codec::transform::KPTransform;
 use libkplayer::get_global_console;
+use libkplayer::util::console::KPConsolePrompt::*;
 use libkplayer::util::console::*;
-use libkplayer::util::console::KPConsolePrompt::{*};
 use libkplayer::util::error::KPError;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use crate::{GLOBAL_FACTORY, validate_and_respond_unprocessable_entity};
-use crate::config::ResourceType;
+use std::collections::HashMap;
+use std::ops::Deref;
+use std::sync::{Arc, Mutex, RwLock, TryLockResult};
 use validator::{Validate, ValidationError};
 
 // Instance
@@ -23,13 +24,15 @@ struct GetInstanceInfo {
 
 #[get("/instance")]
 pub async fn get_instance_list() -> HttpResponse {
-    let factory = GLOBAL_FACTORY.lock().unwrap();
-    let mut instance_list = HashMap::new();
+    todo!();
+    let factory = KPGFactory::default();
+    let mut instance_list: HashMap<String, KPGFactoryInstance> = HashMap::new();
 
     for get_instance_name in factory.get_instance_list() {
-        let get_factory = factory.get_instance(&get_instance_name).unwrap();
-        let get_instance = get_factory.lock().unwrap();
-        instance_list.insert(get_instance_name, get_instance.clone());
+        // let get_factory = factory.get_instance(&get_instance_name).unwrap();
+        // let get_instance = get_factory.lock().unwrap();
+        // instance_list.insert(get_instance_name, get_instance.clone());
+        todo!();
     }
 
     HttpResponse::Ok().json(instance_list)
@@ -40,7 +43,11 @@ pub async fn get_instance_list() -> HttpResponse {
 pub async fn get_instance_playlist(name: web::Path<String>) -> HttpResponse {
     let global_console = get_global_console();
     let console = global_console.lock().await;
-    let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformGetPlayList {}) {
+    let receipt = match console.issue(
+        KPConsoleModule::Transform,
+        name.to_string(),
+        KPConsolePrompt::TransformGetPlayList {},
+    ) {
         Ok(receipt) => receipt,
         Err(err) => {
             return HttpResponse::UnprocessableEntity().json(&err);
@@ -54,7 +61,11 @@ pub async fn get_instance_playlist(name: web::Path<String>) -> HttpResponse {
 pub async fn get_instance_current(name: web::Path<String>) -> HttpResponse {
     let global_console = get_global_console();
     let console = global_console.lock().await;
-    let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformCurrentMedia {}) {
+    let receipt = match console.issue(
+        KPConsoleModule::Transform,
+        name.to_string(),
+        KPConsolePrompt::TransformCurrentMedia {},
+    ) {
         Ok(receipt) => receipt,
         Err(err) => {
             return HttpResponse::UnprocessableEntity().json(&err);
@@ -68,7 +79,11 @@ pub async fn get_instance_current(name: web::Path<String>) -> HttpResponse {
 pub async fn post_instance_prev(name: web::Path<String>) -> HttpResponse {
     let global_console = get_global_console();
     let console = global_console.lock().await;
-    let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformPrevPlayList {}) {
+    let receipt = match console.issue(
+        KPConsoleModule::Transform,
+        name.to_string(),
+        KPConsolePrompt::TransformPrevPlayList {},
+    ) {
         Ok(receipt) => receipt,
         Err(err) => {
             return HttpResponse::UnprocessableEntity().json(&err);
@@ -82,7 +97,11 @@ pub async fn post_instance_prev(name: web::Path<String>) -> HttpResponse {
 pub async fn post_instance_skip(name: web::Path<String>) -> HttpResponse {
     let global_console = get_global_console();
     let console = global_console.lock().await;
-    let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformSkipPlayList {}) {
+    let receipt = match console.issue(
+        KPConsoleModule::Transform,
+        name.to_string(),
+        KPConsolePrompt::TransformSkipPlayList {},
+    ) {
         Ok(receipt) => receipt,
         Err(err) => {
             return HttpResponse::UnprocessableEntity().json(&err);
@@ -93,11 +112,19 @@ pub async fn post_instance_skip(name: web::Path<String>) -> HttpResponse {
 }
 
 #[post("/instance/{name}/playlist/add")]
-pub async fn add_instance_media(name: web::Path<String>, body: web::Json<PromptTransformAddMediaPlayList>) -> HttpResponse {
+pub async fn add_instance_media(
+    name: web::Path<String>,
+    body: web::Json<PromptTransformAddMediaPlayList>,
+) -> HttpResponse {
     let global_console = get_global_console();
     let console = global_console.lock().await;
-    let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformAddMediaPlayList { media: body.clone() })
-    {
+    let receipt = match console.issue(
+        KPConsoleModule::Transform,
+        name.to_string(),
+        KPConsolePrompt::TransformAddMediaPlayList {
+            media: body.clone(),
+        },
+    ) {
         Ok(receipt) => receipt,
         Err(err) => {
             return HttpResponse::UnprocessableEntity().json(&err);
@@ -114,13 +141,21 @@ pub struct RemoveInstanceMedia {
 }
 
 #[post("/instance/{name}/playlist/remove")]
-pub async fn remove_instance_media(name: web::Path<String>, body: web::Json<RemoveInstanceMedia>) -> HttpResponse {
+pub async fn remove_instance_media(
+    name: web::Path<String>,
+    body: web::Json<RemoveInstanceMedia>,
+) -> HttpResponse {
     validate_and_respond_unprocessable_entity!(body);
 
     let global_console = get_global_console();
     let console = global_console.lock().await;
-    let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformRemoveMediaPlayList { name: body.name.clone() })
-    {
+    let receipt = match console.issue(
+        KPConsoleModule::Transform,
+        name.to_string(),
+        KPConsolePrompt::TransformRemoveMediaPlayList {
+            name: body.name.clone(),
+        },
+    ) {
         Ok(receipt) => receipt,
         Err(err) => {
             return HttpResponse::UnprocessableEntity().json(&err);
@@ -138,15 +173,22 @@ pub struct MoveInstanceMedia {
 }
 
 #[post("/instance/{name}/playlist/move")]
-pub async fn move_instance_media(name: web::Path<String>, body: web::Json<MoveInstanceMedia>) -> HttpResponse {
+pub async fn move_instance_media(
+    name: web::Path<String>,
+    body: web::Json<MoveInstanceMedia>,
+) -> HttpResponse {
     validate_and_respond_unprocessable_entity!(body);
 
     let global_console = get_global_console();
     let console = global_console.lock().await;
-    let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformMoveMediaPlayList {
-        name: body.name.clone(),
-        index: body.index.clone(),
-    }) {
+    let receipt = match console.issue(
+        KPConsoleModule::Transform,
+        name.to_string(),
+        KPConsolePrompt::TransformMoveMediaPlayList {
+            name: body.name.clone(),
+            index: body.index.clone(),
+        },
+    ) {
         Ok(receipt) => receipt,
         Err(err) => {
             return HttpResponse::UnprocessableEntity().json(&err);
@@ -164,17 +206,23 @@ pub struct SeekInstanceMedia {
 }
 
 #[post("/instance/{name}/playlist/seek")]
-pub async fn seek_instance_media(name: web::Path<String>, body: web::Json<SeekInstanceMedia>) -> HttpResponse {
+pub async fn seek_instance_media(
+    name: web::Path<String>,
+    body: web::Json<SeekInstanceMedia>,
+) -> HttpResponse {
     validate_and_respond_unprocessable_entity!(body);
 
     let global_console = get_global_console();
     let console = global_console.lock().await;
-    let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformSeekMediaPlayList {
-        seek: body.seek,
-        end: body.end,
-        is_persistence: body.is_persistence,
-    })
-    {
+    let receipt = match console.issue(
+        KPConsoleModule::Transform,
+        name.to_string(),
+        KPConsolePrompt::TransformSeekMediaPlayList {
+            seek: body.seek,
+            end: body.end,
+            is_persistence: body.is_persistence,
+        },
+    ) {
         Ok(receipt) => receipt,
         Err(err) => {
             return HttpResponse::UnprocessableEntity().json(&err);
@@ -191,15 +239,21 @@ pub struct SelectInstanceMedia {
 }
 
 #[post("/instance/{name}/playlist/select")]
-pub async fn select_instance_media(name: web::Path<String>, body: web::Json<SelectInstanceMedia>) -> HttpResponse {
+pub async fn select_instance_media(
+    name: web::Path<String>,
+    body: web::Json<SelectInstanceMedia>,
+) -> HttpResponse {
     validate_and_respond_unprocessable_entity!(body);
 
     let global_console = get_global_console();
     let console = global_console.lock().await;
-    let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformSelectMediaPlayList {
-        name: body.name.clone(),
-    })
-    {
+    let receipt = match console.issue(
+        KPConsoleModule::Transform,
+        name.to_string(),
+        KPConsolePrompt::TransformSelectMediaPlayList {
+            name: body.name.clone(),
+        },
+    ) {
         Ok(receipt) => receipt,
         Err(err) => {
             return HttpResponse::UnprocessableEntity().json(&err);
@@ -214,7 +268,11 @@ pub async fn select_instance_media(name: web::Path<String>, body: web::Json<Sele
 pub async fn get_instance_plugin(name: web::Path<String>) -> HttpResponse {
     let global_console = get_global_console();
     let console = global_console.lock().await;
-    let receipt = match console.issue(KPConsoleModule::Transform, name.to_string(), KPConsolePrompt::TransformGetPluginList {}) {
+    let receipt = match console.issue(
+        KPConsoleModule::Transform,
+        name.to_string(),
+        KPConsolePrompt::TransformGetPluginList {},
+    ) {
         Ok(receipt) => receipt,
         Err(err) => {
             return HttpResponse::UnprocessableEntity().json(&err);
@@ -233,7 +291,10 @@ pub struct UpdateInstancePluginArgumentBody {
 }
 
 #[post("/instance/{instance_name}/plugin/{plugin_name}")]
-pub async fn update_instance_plugin_argument(path: web::Path<(String, String)>, body: web::Json<UpdateInstancePluginArgumentBody>) -> HttpResponse {
+pub async fn update_instance_plugin_argument(
+    path: web::Path<(String, String)>,
+    body: web::Json<UpdateInstancePluginArgumentBody>,
+) -> HttpResponse {
     validate_and_respond_unprocessable_entity!(body);
 
     let mut arguments = HashMap::new();

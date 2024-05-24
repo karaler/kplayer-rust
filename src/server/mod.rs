@@ -2,8 +2,8 @@ use crate::config::ServerSchema;
 use crate::util::error::KPGError;
 use async_trait::async_trait;
 
-pub mod media;
 pub mod http;
+pub mod media;
 
 #[derive(Clone, Debug)]
 pub struct ServerContext {

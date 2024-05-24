@@ -1,17 +1,17 @@
-use std::collections::HashMap;
-use std::path::Path;
-use libkplayer::plugin::plugin::KPPlugin;
-use log::info;
-use serde::{Deserialize, ser, Serialize};
 use crate::config::Root;
 use crate::factory::KPGFactory;
 use crate::util::error::KPGError;
-use crate::util::error::KPGErrorCode::{*};
+use crate::util::error::KPGErrorCode::*;
 use crate::util::file::{compare_md5, download_file};
 use crate::util::jsonrpc::jsonrpc_call;
+use libkplayer::plugin::plugin::KPPlugin;
+use log::info;
+use serde::{ser, Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::Path;
 
 impl KPGFactory {
-    pub(super) fn create_scene(&mut self, cfg: &Root) -> Result<(), KPGError> {
+    pub(super) async fn create_scene(&mut self, cfg: &Root) -> Result<(), KPGError> {
         self.scene = {
             // create scene
             let mut scenes = HashMap::new();
@@ -20,11 +20,18 @@ impl KPGFactory {
                 for item in s.group.iter() {
                     // check plugin
                     let file_path = KPGFactory::get_plugin_file_path(&item.app);
-                    let plugin_information = plugin_center_get_plugin_information(&item.ticket, &item.app)?;
+                    let plugin_information =
+                        plugin_center_get_plugin_information(&item.ticket, &item.app)?;
 
                     if !compare_md5(&file_path, &plugin_information.hash) {
                         if let Err(err) = download_file(&plugin_information.url, &file_path) {
-                            return Err(KPGError::new_with_string(KPGPluginCenterDownloadFailed, format!("download plugin file failed. app: {}, url: {}, error: {}", item.app, plugin_information.url, err)));
+                            return Err(KPGError::new_with_string(
+                                KPGPluginCenterDownloadFailed,
+                                format!(
+                                    "download plugin file failed. app: {}, url: {}, error: {}",
+                                    item.app, plugin_information.url, err
+                                ),
+                            ));
                         }
                     }
 
@@ -61,12 +68,15 @@ fn plugin_center_get_font(url: &String, name: &String) -> Result<GetFontResponse
     let result = jsonrpc_call(url.to_string(), "Resource.GetFont", vec![request])?;
     match serde_json::from_str::<GetFontResponse>(result.as_str()) {
         Ok(get_font) => Ok(get_font),
-        Err(err) => {
-            Err(KPGError::new_with_string(KPGPluginCenterGetFontFailed, format!("get font failed. name: {}, url: {}, response: {}, error: {}", name, url, result, err)))
-        }
+        Err(err) => Err(KPGError::new_with_string(
+            KPGPluginCenterGetFontFailed,
+            format!(
+                "get font failed. name: {}, url: {}, response: {}, error: {}",
+                name, url, result, err
+            ),
+        )),
     }
 }
-
 
 // get plugin information
 #[derive(Serialize, Debug)]
@@ -81,7 +91,10 @@ struct PluginInformationResponse {
     hash: String,
 }
 
-fn plugin_center_get_plugin_information(url: &String, app_name: &String) -> Result<PluginInformationResponse, KPGError> {
+fn plugin_center_get_plugin_information(
+    url: &String,
+    app_name: &String,
+) -> Result<PluginInformationResponse, KPGError> {
     let mut request = PluginInformationRequest {
         app: app_name.to_string(),
         version: vec![],

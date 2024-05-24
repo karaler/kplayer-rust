@@ -1,14 +1,14 @@
-use std::collections::HashMap;
-use xiu::config::{Config, RtmpConfig};
-use xiu::service::Service;
-use log::info;
-use tokio::signal::ctrl_c;
 use crate::config::ServerSchema;
 use crate::server::{KPGServer, ServerContext};
 use crate::util::error::KPGError;
+use crate::util::error::KPGErrorCode::{KPGConfigParseFailed, KPGServerMediaServerStartFailed};
 use anyhow::Result;
 use async_trait::async_trait;
-use crate::util::error::KPGErrorCode::{KPGConfigParseFailed, KPGServerMediaServerStartFailed};
+use log::info;
+use std::collections::HashMap;
+use tokio::signal::ctrl_c;
+use xiu::config::{Config, RtmpConfig};
+use xiu::service::Service;
 
 pub struct KPMediaServer {
     name: String,
@@ -30,6 +30,7 @@ impl KPMediaServer {
     }
 
     async fn serve(&mut self) -> Result<()> {
+        info!("media server listen success. context: {:?}", self.server_context);
         self.service.run().await?;
         Ok(())
     }
@@ -52,15 +53,18 @@ impl KPGServer for KPMediaServer {
     }
 
     fn get_context(&self, name: String) -> Option<ServerContext> {
-        self.server_context.iter().find(|&item| {
-            item.name == name
-        }).cloned()
+        self.server_context
+            .iter()
+            .find(|&item| item.name == name)
+            .cloned()
     }
 }
 
 #[tokio::test]
 async fn test_server() {
-    env_logger::builder().filter_level(log::LevelFilter::Info).init();
+    env_logger::builder()
+        .filter_level(log::LevelFilter::Info)
+        .init();
 
     let mut ms = KPMediaServer::new("test", vec![]);
     ms.serve().await.unwrap();

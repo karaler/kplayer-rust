@@ -1,7 +1,7 @@
+use enum_display::EnumDisplay;
 use std::error::Error;
 use std::fmt;
 use std::fmt::{Display, Formatter};
-use enum_display::EnumDisplay;
 
 #[derive(Debug, Eq, PartialEq, EnumDisplay, Copy, Clone, Hash)]
 pub enum KPGErrorCode {
@@ -13,20 +13,28 @@ pub enum KPGErrorCode {
     KPGOutputLaunchFailed,
     KPGPlayListAddMediaFailed,
     KPGMediaServerExited,
+
     KPGFactoryParseConfigFailed,
     KPGFactoryOpenPluginFailed,
     KPGFactoryConsoleModuleNotFound,
+    KPGFactoryLaunchServerFailed,
+    KPGFactoryLaunchInstanceFailed,
+
     KPGServerNotSupportSchema,
     KPGServerMediaServerEnableSchemaFailed,
     KPGServerMediaServerStartFailed,
     KPGServerMediaServerStopFailed,
     KPGServerHttpServerStartFailed,
-    KPGUtilReadDirectoryFailed,
+
     KPGAPIServerBindFailed,
     KPGAPIServerStartFailed,
+
+    KPGUtilReadDirectoryFailed,
+
     KPGPluginCenterDownloadFailed,
     KPGPluginCenterGetPluginInformationFailed,
     KPGPluginCenterGetFontFailed,
+
     KPGJsonRPCFailed,
 }
 
@@ -54,10 +62,7 @@ impl KPGError {
     }
 
     pub fn new_with_string(code: KPGErrorCode, error: String) -> KPGError {
-        return KPGError {
-            code,
-            error: error,
-        };
+        return KPGError { code, error: error };
     }
 
     pub fn new_with_str(code: KPGErrorCode, error: &'static str) -> KPGError {

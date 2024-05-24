@@ -1,8 +1,8 @@
-pub mod playlist;
-pub mod instance;
 pub mod api;
+pub mod instance;
+pub mod playlist;
 
-use actix_web::{Responder};
+use actix_web::Responder;
 use validator::Validate;
 
 #[macro_export]

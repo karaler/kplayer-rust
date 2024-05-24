@@ -12,25 +12,32 @@ impl KPDuration {
     }
 }
 
-impl ToString for KPDuration {
-    fn to_string(&self) -> String {
+impl Display for KPDuration {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let seconds = self.duration.as_secs();
         let hours = seconds / 3600;
         let minutes = (seconds / 60) % 60;
         let seconds = seconds % 60;
 
         let formatted = format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
-        formatted
+        write!(f, "{}", formatted)
     }
 }
 
 impl Debug for KPDuration {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "KPDuration({}s / {})", self.duration.as_secs().clone(), self.to_string())
+        write!(
+            f,
+            "KPDuration({}s / {})",
+            self.duration.as_secs().clone(),
+            self.to_string()
+        )
     }
 }
 
-pub fn current_mill_timestamp() -> u128 {
-    let current_time = SystemTime::now();
-    current_time.duration_since(UNIX_EPOCH).unwrap().as_millis()
+impl KPDuration {
+    pub fn current_mill_timestamp() -> u128 {
+        let current_time = SystemTime::now();
+        current_time.duration_since(UNIX_EPOCH).unwrap().as_millis()
+    }
 }
