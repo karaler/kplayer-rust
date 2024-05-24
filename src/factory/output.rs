@@ -1,7 +1,9 @@
 use crate::config::{OutputType, Root};
 use crate::factory::KPGFactory;
+use crate::server::ServerContext;
 use crate::util::error::KPGError;
 use crate::util::rand::rand_string;
+use anyhow::Result;
 use libkplayer::bindings::{getiopolicy_np, nan};
 use libkplayer::codec::transform::KPTransform;
 use libkplayer::plugin::plugin::KPPlugin;
@@ -10,8 +12,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use xiu::config::{Config, RtmpConfig, RtmpPullConfig, RtmpPushConfig};
 use xiu::service::Service;
-use crate::server::ServerContext;
-use anyhow::Result;
 
 pub(super) struct KPGOutput {
     name: String,
@@ -33,13 +33,11 @@ impl KPGOutput {
                 address: source_path.to_string(),
                 port: 1935,
             }),
-            push: Some(vec![
-                RtmpPushConfig {
-                    enabled: true,
-                    address: push_path.to_string(),
-                    port: 1935,
-                }
-            ]),
+            push: Some(vec![RtmpPushConfig {
+                enabled: true,
+                address: push_path.to_string(),
+                port: 1935,
+            }]),
             auth: None,
         });
         let service = Service::new(cfg.clone());

@@ -16,16 +16,15 @@ use std::collections::HashMap;
 use std::fs::metadata;
 use std::sync::mpsc::{channel, sync_channel};
 use std::sync::{Arc, Mutex};
+use std::thread::sleep;
 use std::time::Duration;
 use std::{io, time::SystemTime};
-use std::thread::sleep;
 use uuid::Uuid;
 
 pub mod config;
 pub mod factory;
 pub mod server;
 pub mod util;
-
 
 #[tokio::main]
 async fn main() {
@@ -41,10 +40,22 @@ async fn main() {
     factory.create(cfg).await.expect("create factory failed");
 
     // launch threads
-    factory.launch_message_bus().await.expect("launch message bus failed");
-    factory.launch_server(None).await.expect("launch server failed");
-    factory.launch_output(None).await.expect("launch output failed");
-    factory.launch_instance(None).await.expect("launch instance failed");
+    factory
+        .launch_message_bus()
+        .await
+        .expect("launch message bus failed");
+    factory
+        .launch_server(None)
+        .await
+        .expect("launch server failed");
+    factory
+        .launch_output(None)
+        .await
+        .expect("launch output failed");
+    factory
+        .launch_instance(None)
+        .await
+        .expect("launch instance failed");
 
     factory.wait().await.expect("wait for runtime");
 

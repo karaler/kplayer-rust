@@ -10,7 +10,7 @@ use libkplayer::util::kpcodec::kpencode_parameter::{
 };
 use log::info;
 use std::collections::HashMap;
-use std::sync::{Arc};
+use std::sync::Arc;
 use tokio::sync::Mutex;
 
 impl KPGFactory {
@@ -159,7 +159,8 @@ impl KPGFactory {
 
                 // set server
                 if !ins.server.is_empty() {
-                    transform.set_output_url(KPGFactory::get_instance_source(ins.name.clone(), 1935))
+                    transform
+                        .set_output_url(KPGFactory::get_instance_source(ins.name.clone(), 1935))
                 }
 
                 info!(

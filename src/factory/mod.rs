@@ -157,7 +157,12 @@ impl KPGFactory {
             }
             Some(svc_name) => {
                 let server = match self.server.get(svc_name) {
-                    None => return Err(KPGError::new_with_string(KPGFactoryLaunchServerFailed, format!("name not found. name: {}", svc_name))),
+                    None => {
+                        return Err(KPGError::new_with_string(
+                            KPGFactoryLaunchServerFailed,
+                            format!("name not found. name: {}", svc_name),
+                        ))
+                    }
                     Some(svc) => svc.clone(),
                 };
 
@@ -197,26 +202,32 @@ impl KPGFactory {
                     });
                 }
             }
-            Some(instance_name) => {
-                match self.instance.get(instance_name) {
-                    None => return Err(KPGError::new_with_string(KPGFactoryLaunchInstanceFailed, format!("instance name not found. name: {}", instance_name))),
-                    Some(instance) => {
-                        let transform_arc = instance.clone().transform.clone();
-                        tokio::spawn(async move {
-                            let mut transform = transform_arc.lock().await;
-                            info!("instance launch success. name: {}", transform.get_name());
-                            match transform.launch(){
-                                Ok(_) => {
-                                    info!("launch instance shutdown success. name: {}", transform.get_name());
-                                }
-                                Err(_) => {
-                                    todo!("notify error")
-                                }
-                            }
-                        });
-                    }
+            Some(instance_name) => match self.instance.get(instance_name) {
+                None => {
+                    return Err(KPGError::new_with_string(
+                        KPGFactoryLaunchInstanceFailed,
+                        format!("instance name not found. name: {}", instance_name),
+                    ))
                 }
-            }
+                Some(instance) => {
+                    let transform_arc = instance.clone().transform.clone();
+                    tokio::spawn(async move {
+                        let mut transform = transform_arc.lock().await;
+                        info!("instance launch success. name: {}", transform.get_name());
+                        match transform.launch() {
+                            Ok(_) => {
+                                info!(
+                                    "launch instance shutdown success. name: {}",
+                                    transform.get_name()
+                                );
+                            }
+                            Err(_) => {
+                                todo!("notify error")
+                            }
+                        }
+                    });
+                }
+            },
         };
 
         Ok(())
@@ -245,9 +256,7 @@ impl KPGFactory {
         Ok(())
     }
     pub async fn launch_message_bus(&mut self) -> Result<(), KPGError> {
-        tokio::spawn(async move {
-            for item in subscribe_message().iter() {}
-        });
+        tokio::spawn(async move { for item in subscribe_message().iter() {} });
         Ok(())
     }
 

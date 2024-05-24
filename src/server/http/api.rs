@@ -92,12 +92,15 @@ impl KPGServer for KPGHttp {
                         .service(update_instance_plugin_argument);
                 }
                 app
-            }).bind((ctx.address.as_str(), ctx.port)).map_err(|err| {
+            })
+            .bind((ctx.address.as_str(), ctx.port))
+            .map_err(|err| {
                 KPGError::new_with_string(
                     KPGAPIServerBindFailed,
                     format!("context: {:?}, error: {}", ctx, err),
                 )
-            })?.run();
+            })?
+            .run();
 
             info!("api server listen success. context: {:?}", ctx);
 

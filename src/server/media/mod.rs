@@ -30,7 +30,10 @@ impl KPMediaServer {
     }
 
     async fn serve(&mut self) -> Result<()> {
-        info!("media server listen success. context: {:?}", self.server_context);
+        info!(
+            "media server listen success. context: {:?}",
+            self.server_context
+        );
         self.service.run().await?;
         Ok(())
     }
