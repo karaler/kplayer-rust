@@ -10,49 +10,23 @@ use libkplayer::plugin::plugin::KPPlugin;
 use log::info;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use xiu::config::{Config, RtmpConfig, RtmpPullConfig, RtmpPushConfig};
-use xiu::service::Service;
 
 pub(super) struct KPGOutput {
     name: String,
-    config: Config,
-    service: Service,
     source_path: String,
     push_path: String,
 }
 
 impl KPGOutput {
     pub fn new<T: ToString>(name: T, source_path: T, push_path: T) -> Self {
-        let mut cfg = Config::new(0, 0, 0, 0, 0, "error".to_string());
-        cfg.rtmp = Some(RtmpConfig {
-            enabled: true,
-            port: 0,
-            gop_num: None,
-            pull: Some(RtmpPullConfig {
-                enabled: true,
-                address: source_path.to_string(),
-                port: 1935,
-            }),
-            push: Some(vec![RtmpPushConfig {
-                enabled: true,
-                address: push_path.to_string(),
-                port: 1935,
-            }]),
-            auth: None,
-        });
-        let service = Service::new(cfg.clone());
-
         KPGOutput {
             name: name.to_string(),
-            config: cfg,
-            service,
             source_path: source_path.to_string(),
             push_path: push_path.to_string(),
         }
     }
 
     pub async fn serve(&mut self) -> Result<()> {
-        self.service.run().await?;
         Ok(())
     }
 

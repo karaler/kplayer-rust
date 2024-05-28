@@ -16,10 +16,12 @@ use std::collections::HashMap;
 use std::fs::metadata;
 use std::sync::mpsc::{channel, sync_channel};
 use std::sync::{Arc, Mutex};
-use std::thread::sleep;
 use std::time::Duration;
 use std::{io, time::SystemTime};
+use actix_web::web::ServiceConfig;
+use tokio::time::sleep;
 use uuid::Uuid;
+use crate::util::service_context::generate_service_context;
 
 pub mod config;
 pub mod factory;
@@ -28,36 +30,37 @@ pub mod util;
 
 #[tokio::main]
 async fn main() {
-    setup_log(LevelFilter::Info);
-
-    // load config
-    let cfg = parse_file().expect("parse config file failed");
+    let svc = generate_service_context();
+    setup_log(svc.log_level);
 
     // initialize
     let mut factory = KPGFactory::default();
 
     // create factory from config
-    factory.create(cfg).await.expect("create factory failed");
+    factory.create(&svc).await.expect("create factory failed");
 
     // launch threads
     factory
-        .launch_message_bus()
+        .launch_message_bus(&svc)
         .await
         .expect("launch message bus failed");
+
     factory
-        .launch_server(None)
+        .launch_server(&svc, None)
         .await
         .expect("launch server failed");
-    factory
-        .launch_output(None)
-        .await
-        .expect("launch output failed");
-    factory
-        .launch_instance(None)
-        .await
-        .expect("launch instance failed");
 
-    factory.wait().await.expect("wait for runtime");
+    // factory
+    //     .launch_output(None)
+    //     .await
+    //     .expect("launch output failed");
+
+    // factory
+    //     .launch_instance(None)
+    //     .await
+    //     .expect("launch instance failed");
+
+    factory.wait(&svc).await.expect("wait for runtime");
 
     info!("exit success");
 }

@@ -8,13 +8,14 @@ use crate::util::error::KPGErrorCode::KPGFactoryParseConfigFailed;
 use log::info;
 use std::collections::HashMap;
 use std::sync::Arc;
+use crate::util::service_context::ServiceContext;
 
 impl KPGFactory {
-    pub(super) async fn create_server(&mut self, cfg: &Root) -> Result<(), KPGError> {
+    pub(super) async fn create_server(&mut self, svc: &ServiceContext) -> Result<(), KPGError> {
         self.server = {
             let mut servers: HashMap<String, Arc<tokio::sync::Mutex<dyn KPGServer>>> =
                 HashMap::new();
-            for srv in cfg.server.iter() {
+            for srv in svc.config.server.iter() {
                 match srv.target {
                     ServerType::None => {
                         return Err(KPGError::new_with_string(
@@ -51,7 +52,7 @@ impl KPGFactory {
                             };
                         }
 
-                        let media_server = KPMediaServer::new(srv.name.clone(), contexts);
+                        let media_server = KPMediaServer::new(svc, srv.name.clone(), contexts);
                         info!(
                             "create media server success. type: {:?}, server: {}",
                             srv.target, srv.name

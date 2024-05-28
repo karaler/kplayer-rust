@@ -49,6 +49,7 @@ use std::time::Duration;
 use tokio::runtime::Runtime;
 use tokio::sync::{Mutex, MutexGuard};
 use tokio::time::sleep;
+use crate::util::service_context::ServiceContext;
 
 const PLUGIN_DIRECTORY: &str = "plugin/";
 const PLUGIN_EXTENSION: &str = ".kpe";
@@ -124,18 +125,18 @@ impl KPGFactory {
         }
     }
 
-    pub async fn create(&mut self, cfg: Root) -> Result<(), KPGError> {
-        self.create_playlist(&cfg).await?;
-        self.create_scene(&cfg).await?;
-        self.create_server(&cfg).await?;
-        self.create_output(&cfg).await?;
-        self.create_instance(&cfg).await?;
+    pub async fn create(&mut self, svc: &ServiceContext) -> Result<(), KPGError> {
+        self.create_playlist(&svc.config).await?;
+        self.create_scene(&svc.config).await?;
+        self.create_server(&svc).await?;
+        self.create_output(&svc.config).await?;
+        self.create_instance(&svc.config).await?;
 
         self.create_time = KPDuration::current_mill_timestamp();
         Ok(())
     }
 
-    pub async fn launch_server(&mut self, name: Option<&String>) -> Result<(), KPGError> {
+    pub async fn launch_server(&mut self, svc: &ServiceContext, name: Option<&String>) -> Result<(), KPGError> {
         match name {
             None => {
                 // launch all server
@@ -161,7 +162,7 @@ impl KPGFactory {
                         return Err(KPGError::new_with_string(
                             KPGFactoryLaunchServerFailed,
                             format!("name not found. name: {}", svc_name),
-                        ))
+                        ));
                     }
                     Some(svc) => svc.clone(),
                 };
@@ -207,7 +208,7 @@ impl KPGFactory {
                     return Err(KPGError::new_with_string(
                         KPGFactoryLaunchInstanceFailed,
                         format!("instance name not found. name: {}", instance_name),
-                    ))
+                    ));
                 }
                 Some(instance) => {
                     let transform_arc = instance.clone().transform.clone();
@@ -255,13 +256,23 @@ impl KPGFactory {
         };
         Ok(())
     }
-    pub async fn launch_message_bus(&mut self) -> Result<(), KPGError> {
-        tokio::spawn(async move { for item in subscribe_message().iter() {} });
+    pub async fn launch_message_bus(&mut self, svc: &ServiceContext) -> Result<(), KPGError> {
+        let svc_clone = svc.clone();
+        self.runtime.spawn(async move {
+            for msg in subscribe_message().await.iter() {
+                svc_clone.message_sender.send(msg).unwrap();
+            }
+        });
         Ok(())
     }
 
-    pub async fn wait(&self) -> Result<(), KPGError> {
-        sleep(Duration::from_secs(5000)).await;
+    pub async fn wait(&mut self, svc: &ServiceContext) -> Result<(), KPGError> {
+        let receiver = svc.message_receiver.clone();
+
+        // event loop
+        while let Ok(msg) = receiver.lock().await.recv().await {
+            info!("msg: {}",msg);
+        }
         Ok(())
     }
 }

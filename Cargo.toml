@@ -30,8 +30,10 @@ lazy_static = "1.4.0"
 validator = { version = "0.18.1", features = ["derive"] }
 reqwest = { version = "0.12.4", features = ["blocking"] }
 jsonrpc_v2_client = "0.2.1"
-xiu = { path = "third-parts/xiu/application/xiu" }
 anyhow = "1.0.86"
 tokio = { version = "1.37.0", features = ["full"] }
 env_logger = "0.11.3"
 async-trait = "0.1.80"
+
+rtmp = { path = "third-parts/xiu/protocol/rtmp" }
+streamhub = { path = "third-parts/xiu/library/streamhub" }

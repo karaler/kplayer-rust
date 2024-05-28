@@ -267,7 +267,7 @@ pub struct Audio {
 
 pub fn parse_file() -> Result<Root, KPGError> {
     let path = {
-        let search_config_path = vec!["config.json", "config.json5"];
+        let search_config_path = vec!["config.json", "config.json5", "build/config.json5"];
         match find_existed_file(search_config_path.clone()) {
             None => {
                 return Err(KPGError::new_with_string(
