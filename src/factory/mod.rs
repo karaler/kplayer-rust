@@ -14,6 +14,7 @@ use crate::util::error::KPGError;
 use crate::util::error::KPGErrorCode::*;
 use crate::util::file::read_directory_file;
 use crate::util::rand::rand_string;
+use crate::util::service_context::ServiceContext;
 use crate::util::time::KPDuration;
 use crate::util::{default, time};
 use actix_web::web::to;
@@ -49,7 +50,6 @@ use std::time::Duration;
 use tokio::runtime::Runtime;
 use tokio::sync::{Mutex, MutexGuard};
 use tokio::time::sleep;
-use crate::util::service_context::ServiceContext;
 
 const PLUGIN_DIRECTORY: &str = "plugin/";
 const PLUGIN_EXTENSION: &str = ".kpe";
@@ -136,7 +136,11 @@ impl KPGFactory {
         Ok(())
     }
 
-    pub async fn launch_server(&mut self, svc: &ServiceContext, name: Option<&String>) -> Result<(), KPGError> {
+    pub async fn launch_server(
+        &mut self,
+        svc: &ServiceContext,
+        name: Option<&String>,
+    ) -> Result<(), KPGError> {
         match name {
             None => {
                 // launch all server
@@ -271,7 +275,7 @@ impl KPGFactory {
 
         // event loop
         while let Ok(msg) = receiver.lock().await.recv().await {
-            info!("msg: {}",msg);
+            info!("msg: {}", msg);
         }
         Ok(())
     }

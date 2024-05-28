@@ -1,19 +1,19 @@
-use std::sync::Arc;
-use actix_web::web::service;
 use crate::config::ServerSchema;
 use crate::server::{KPGServer, ServerContext};
 use crate::util::error::KPGError;
 use crate::util::error::KPGErrorCode::{KPGConfigParseFailed, KPGServerMediaServerStartFailed};
+use crate::util::service_context::{generate_service_context, ServiceContext};
+use actix_web::web::service;
 use anyhow::Result;
 use async_trait::async_trait;
-use libkplayer::util::message::{KPMessage, KPMessageBus, MessageAction};
 use libkplayer::util::message::MessageAction::*;
+use libkplayer::util::message::{KPMessage, KPMessageBus, MessageAction};
 use log::{error, info};
 use rtmp::rtmp::RtmpServer;
+use std::sync::Arc;
 use streamhub::define::StreamHubEventMessage;
 use streamhub::notify::Notifier;
 use streamhub::StreamsHub;
-use crate::util::service_context::{generate_service_context, ServiceContext};
 
 struct KPMediaServerNotify {
     svc: ServiceContext,
@@ -21,9 +21,7 @@ struct KPMediaServerNotify {
 
 impl KPMediaServerNotify {
     pub fn new(svc: &ServiceContext) -> Self {
-        KPMediaServerNotify {
-            svc: svc.clone()
-        }
+        KPMediaServerNotify { svc: svc.clone() }
     }
 }
 
@@ -32,40 +30,52 @@ impl Notifier for KPMediaServerNotify {
     async fn on_publish_notify(&self, event: &StreamHubEventMessage) {
         if let StreamHubEventMessage::Publish { identifier, info } = event {
             let msg = serde_json::to_string(info).unwrap();
-            self.svc.message_sender.send(KPMessage {
-                action: ServerAddPusher,
-                message: msg,
-            }).unwrap();
+            self.svc
+                .message_sender
+                .send(KPMessage {
+                    action: ServerAddPusher,
+                    message: msg,
+                })
+                .unwrap();
         }
     }
 
     async fn on_unpublish_notify(&self, event: &StreamHubEventMessage) {
         if let StreamHubEventMessage::UnPublish { identifier, info } = event {
             let msg = serde_json::to_string(info).unwrap();
-            self.svc.message_sender.send(KPMessage {
-                action: ServerRemovePusher,
-                message: msg,
-            }).unwrap();
+            self.svc
+                .message_sender
+                .send(KPMessage {
+                    action: ServerRemovePusher,
+                    message: msg,
+                })
+                .unwrap();
         }
     }
 
     async fn on_play_notify(&self, event: &StreamHubEventMessage) {
         if let StreamHubEventMessage::Subscribe { identifier, info } = event {
             let msg = serde_json::to_string(info).unwrap();
-            self.svc.message_sender.send(KPMessage {
-                action: ServerAddPlayer,
-                message: msg,
-            }).unwrap();
+            self.svc
+                .message_sender
+                .send(KPMessage {
+                    action: ServerAddPlayer,
+                    message: msg,
+                })
+                .unwrap();
         }
     }
 
     async fn on_stop_notify(&self, event: &StreamHubEventMessage) {
         if let StreamHubEventMessage::UnSubscribe { identifier, info } = event {
             let msg = serde_json::to_string(info).unwrap();
-            self.svc.message_sender.send(KPMessage {
-                action: ServerRemovePlayer,
-                message: msg,
-            }).unwrap();
+            self.svc
+                .message_sender
+                .send(KPMessage {
+                    action: ServerRemovePlayer,
+                    message: msg,
+                })
+                .unwrap();
         }
     }
 }
@@ -79,7 +89,11 @@ pub struct KPMediaServer {
 }
 
 impl KPMediaServer {
-    pub fn new<T: ToString>(svc: &ServiceContext, name: T, server_context: Vec<ServerContext>) -> Self {
+    pub fn new<T: ToString>(
+        svc: &ServiceContext,
+        name: T,
+        server_context: Vec<ServerContext>,
+    ) -> Self {
         let notifier = Arc::new(KPMediaServerNotify::new(svc));
         let stream_hub = StreamsHub::new(Some(notifier.clone()));
         KPMediaServer {
@@ -97,13 +111,22 @@ impl KPMediaServer {
 
         let service_context = self.server_context.clone();
         tokio::spawn(async move {
-            info!("media server listen success. context: {:?}",service_context);
+            info!(
+                "media server listen success. context: {:?}",
+                service_context
+            );
             if let Err(err) = server.run().await {
-                error!("media server listen failed. context: {:?}, error: {}", service_context,err)
+                error!(
+                    "media server listen failed. context: {:?}, error: {}",
+                    service_context, err
+                )
             }
         });
 
-        self.svc.message_sender.send(KPMessage { action: ServerListening, message: self.name.clone() })?;
+        self.svc.message_sender.send(KPMessage {
+            action: ServerListening,
+            message: self.name.clone(),
+        })?;
 
         self.stream_hub.run().await;
         Ok(())
@@ -139,12 +162,16 @@ async fn test_server() {
     let svc = generate_service_context();
     env_logger::builder().filter_level(svc.log_level).init();
 
-    let mut ms = KPMediaServer::new(&svc, "test", vec![ServerContext {
-        schema: ServerSchema::Rtmp,
-        name: "test".to_string(),
-        address: "0.0.0.0".to_string(),
-        port: 1935,
-    }]);
+    let mut ms = KPMediaServer::new(
+        &svc,
+        "test",
+        vec![ServerContext {
+            schema: ServerSchema::Rtmp,
+            name: "test".to_string(),
+            address: "0.0.0.0".to_string(),
+            port: 1935,
+        }],
+    );
     ms.serve().await.unwrap();
     info!("quit");
 }
