@@ -3,9 +3,6 @@ name = "kpcodec"
 version = "0.1.0"
 edition = "2021"
 
-[build]
-rustflags = ["-C", "link-args=-lstdc++"]
-
 [dependencies]
 anyhow = "1.0.86"
 dotenv = "0.15.0"
@@ -13,3 +10,4 @@ env_logger = "0.11.5"
 log = "0.4.22"
 once_cell = "1.19.0"
 rusty_ffmpeg = { version = "0.14.1", features = ["link_system_ffmpeg"] }
+serde = { version = "1.0.204", features = ["derive"] }

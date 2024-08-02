@@ -8,5 +8,14 @@ use crate::util::codec_status::KPCodecStatus;
 use anyhow::{anyhow, Result};
 use crate::{cstr, cstring};
 use crate::init::initialize;
+use crate::{averror};
+use std::env;
+use log::info;
+use std::collections::{BTreeMap, LinkedList};
+use std::ffi::c_int;
+use log::{debug, warn};
+use std::collections::VecDeque;
+use log::trace;
+use std::ffi::c_char;
 
 mod decode;
