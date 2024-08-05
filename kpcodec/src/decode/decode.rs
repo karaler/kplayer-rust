@@ -45,11 +45,25 @@ pub struct KPDecode {
     packet: KPAVPacket,
 }
 
-// impl Iterator for KPDecode {
-//     type Item = ((KPAVMediaType, KPAVFrame));
-//
-//     fn next(&mut self) -> Option<Self::Item> {}
-// }
+impl Iterator for KPDecode {
+    type Item = (Result<(KPAVMediaType, KPAVFrame)>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.status == KPCodecStatus::Started {
+            for (media_type, index) in self.expect_stream_index.iter() {
+                let stream_context = self.streams.get_mut(&index.unwrap()).unwrap();
+                if let Some(frame) = stream_context.frames.pop_back() {
+                    return Some(Ok((media_type.clone(), frame)));
+                }
+            }
+
+            // stream to queue
+            if let Err(err) = self.stream_to_codec() { return Some(Err(err)); }
+            if let Err(err) = self.stream_from_codec() { return Some(Err(err)); };
+        }
+        None
+    }
+}
 
 impl KPDecode {
     pub fn new<T: ToString>(input_path: T) -> Self {
@@ -320,7 +334,7 @@ impl KPDecode {
                             warn!("codec context queue length overlong. size: {}, media_type:{}", stream_context.frames.len(),media_type);
                         }
                         trace!("receipt frame. index:{}, media_type:{}, pts:{}", stream_index, media_type, frame.get().pts);
-                        // stream_context.frames.push_back(frame);
+                        stream_context.frames.push_back(frame);
                     }
                     ret if ret == AVERROR(EAGAIN) as c_int => {
                         break;
@@ -352,9 +366,10 @@ fn open_file() {
     decode.set_expect_stream(expect_streams);
     decode.find_streams().unwrap();
     decode.open_codec().unwrap();
-    while decode.status == KPCodecStatus::Started {
-        decode.stream_to_codec().unwrap();
-        decode.stream_from_codec().unwrap();
+
+    for get_frame in decode {
+        let (media_type, frame) = get_frame.unwrap();
+        info!("get frame. pts: {}, media_type: {}", frame.get().pts, media_type);
     }
 }
 
