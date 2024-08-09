@@ -3,6 +3,7 @@ use serde::Serialize;
 pub mod decode;
 mod util;
 mod init;
+mod filter;
 
 #[macro_export]
 macro_rules! cstring {

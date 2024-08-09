@@ -247,3 +247,93 @@ impl KPAVRational {
         self.0
     }
 }
+
+// KPAVFilterGraph
+pub struct KPAVFilterGraph {
+    filter_graph: *mut AVFilterGraph,
+}
+
+impl Default for KPAVFilterGraph {
+    fn default() -> Self {
+        KPAVFilterGraph { filter_graph: ptr::null_mut() }
+    }
+}
+
+impl Drop for KPAVFilterGraph {
+    fn drop(&mut self) {
+        if !self.filter_graph.is_null() {
+            unsafe { avfilter_graph_free(&mut self.filter_graph) }
+        }
+    }
+}
+
+impl KPAVFilterGraph {
+    pub fn new() -> Self {
+        KPAVFilterGraph {
+            filter_graph: unsafe { avfilter_graph_alloc() }
+        }
+    }
+
+    pub fn get(&self) -> &mut AVFilterGraph {
+        assert!(!self.filter_graph.is_null());
+        if self.filter_graph.is_null() {
+            panic!("zero pointer");
+        }
+
+        unsafe { self.filter_graph.as_mut().unwrap() }
+    }
+}
+
+// KPFilter
+#[derive(Clone)]
+pub struct KPAVFilter(*mut AVFilter);
+
+impl Default for KPAVFilter {
+    fn default() -> Self {
+        KPAVFilter(ptr::null_mut())
+    }
+}
+
+impl KPAVFilter {
+    pub fn get(&self) -> &mut AVFilter {
+        assert!(!self.0.is_null());
+        if self.0.is_null() {
+            panic!("zero pointer");
+        }
+
+        unsafe { self.0.as_mut().unwrap() }
+    }
+}
+
+// KPFilterContext
+pub struct KPAVFilterContext {
+    filter_context: *mut AVFilterContext,
+}
+
+impl Default for KPAVFilterContext {
+    fn default() -> Self {
+        KPAVFilterContext { filter_context: ptr::null_mut() }
+    }
+}
+
+impl KPAVFilterContext {
+    pub fn get(&self) -> &mut AVFilterContext {
+        assert!(!self.filter_context.is_null());
+        if self.filter_context.is_null() {
+            panic!("zero pointer");
+        }
+        unsafe { self.filter_context.as_mut().unwrap() }
+    }
+
+    pub fn as_ptr(&self) -> *mut AVFilterContext {
+        self.filter_context
+    }
+
+    pub fn get_input_count(&self) -> usize {
+        self.get().nb_inputs as usize
+    }
+
+    pub fn get_output_count(&self) -> usize {
+        self.get().nb_outputs as usize
+    }
+}
