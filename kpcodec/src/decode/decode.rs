@@ -1,5 +1,8 @@
 use std::ffi::c_char;
+use std::slice::Iter;
 use crate::decode::*;
+use crate::filter::graph::KPGraphSourceAttribute;
+use crate::filter::KPGraphSource;
 
 const WARN_QUEUE_LIMIT: usize = 500;
 
@@ -45,23 +48,81 @@ pub struct KPDecode {
     packet: KPAVPacket,
 }
 
-impl Iterator for KPDecode {
+pub struct KPDecodeIterator<'a> {
+    decode: &'a mut KPDecode,
+}
+
+impl<'a> Iterator for KPDecodeIterator<'a> {
     type Item = (Result<(KPAVMediaType, KPAVFrame)>);
 
     fn next(&mut self) -> Option<Self::Item> {
-        while self.status == KPCodecStatus::Started {
-            for (media_type, index) in self.expect_stream_index.iter() {
-                let stream_context = self.streams.get_mut(&index.unwrap()).unwrap();
+        let decode = &mut self.decode;
+        while decode.status == KPCodecStatus::Started {
+            for (media_type, index) in decode.expect_stream_index.iter() {
+                let stream_context = decode.streams.get_mut(&index.unwrap()).unwrap();
                 if let Some(frame) = stream_context.frames.pop_back() {
                     return Some(Ok((media_type.clone(), frame)));
                 }
             }
 
             // stream to queue
-            if let Err(err) = self.stream_to_codec() { return Some(Err(err)); }
-            if let Err(err) = self.stream_from_codec() { return Some(Err(err)); };
+            if let Err(err) = decode.stream_to_codec() { return Some(Err(err)); }
+            if let Err(err) = decode.stream_from_codec() { return Some(Err(err)); };
         }
         None
+    }
+}
+
+impl KPDecode {
+    pub fn iter(&mut self) -> KPDecodeIterator {
+        KPDecodeIterator {
+            decode: self,
+        }
+    }
+}
+
+impl KPGraphSource for KPDecode {
+    fn get_source(&self, media_type: &KPAVMediaType) -> Result<KPGraphSourceAttribute> {
+        match media_type.clone() {
+            m if m == KPAVMediaType::KPAVMEDIA_TYPE_VIDEO => {
+                let stream_index = {
+                    match self.expect_stream_index.get(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO) {
+                        None => { return Err(anyhow!("not exist except stream. media_type: {}", media_type)); }
+                        Some(i) => i.unwrap(),
+                    }
+                };
+                let video_stream_context = self.streams.get(&stream_index).unwrap();
+                let codec_context = video_stream_context.codec_context_ptr.get();
+                Ok(KPGraphSourceAttribute::Video {
+                    width: codec_context.width as usize,
+                    height: codec_context.height as usize,
+                    pix_fmt: KPAVPixelFormat::from(codec_context.pix_fmt),
+                    time_base: video_stream_context.time_base.clone(),
+                    frame_rate: KPAVRational::from(codec_context.framerate),
+                    pixel_aspect: KPAVRational::from(codec_context.sample_aspect_ratio),
+                })
+            }
+            m if m == KPAVMediaType::KPAVMEDIA_TYPE_AUDIO => {
+                let stream_index = {
+                    match self.expect_stream_index.get(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO) {
+                        None => { return Err(anyhow!("not exist except stream. media_type: {}", media_type)); }
+                        Some(i) => i.unwrap(),
+                    }
+                };
+                let audio_stream_context = self.streams.get(&stream_index).unwrap();
+                let codec_context = audio_stream_context.codec_context_ptr.get();
+                Ok(KPGraphSourceAttribute::Audio {
+                    sample_rate: codec_context.sample_rate as usize,
+                    sample_fmt: KPAVSampleFormat::from(codec_context.sample_fmt),
+                    channel_layout: codec_context.channel_layout as usize,
+                    channels: codec_context.channels as usize,
+                    time_base: audio_stream_context.time_base.clone(),
+                })
+            }
+            m => {
+                Err(anyhow!("not support media type. media_type: {}", m))
+            }
+        }
     }
 }
 
@@ -120,10 +181,10 @@ impl KPDecode {
 
     pub fn find_streams(&mut self) -> Result<()> {
         assert_eq!(self.status, KPCodecStatus::Opened);
-        let format_context = unsafe { *self.format_context_ptr.get() };
         let ret = unsafe { avformat_find_stream_info(self.format_context_ptr.as_ptr(), ptr::null_mut()) };
         if ret < 0 { return Err(anyhow!("find streams failed. error: {:?}", averror!(ret))); }
 
+        let format_context = self.format_context_ptr.get();
         // fill in stream
         unsafe {
             for i in 0..format_context.nb_streams as usize {
@@ -137,7 +198,7 @@ impl KPDecode {
                 let metadata = KPAVDictionary::from(stream.metadata);
                 let codec_context = KPDecodeStreamContext {
                     media_type: KPAVMediaType::from((*stream.codecpar).codec_type),
-                    time_base: KPAVRational::from(&stream.time_base),
+                    time_base: KPAVRational::from(stream.time_base),
                     codec_context_ptr: Default::default(),
                     end_of_file: false,
                     metadata,
@@ -329,27 +390,31 @@ impl KPDecode {
                 let frame = KPAVFrame::new();
                 let ret = unsafe { avcodec_receive_frame(stream_context.codec_context_ptr.get(), frame.get()) };
                 match ret {
-                    0 => {
+                    _ if ret >= 0 => {
                         if stream_context.frames.len() >= WARN_QUEUE_LIMIT {
                             warn!("codec context queue length overlong. size: {}, media_type:{}", stream_context.frames.len(),media_type);
                         }
                         trace!("receipt frame. index:{}, media_type:{}, pts:{}", stream_index, media_type, frame.get().pts);
                         stream_context.frames.push_back(frame);
                     }
-                    ret if ret == AVERROR(EAGAIN) as c_int => {
+                    _ if ret == AVERROR(EAGAIN) => {
                         break;
                     }
-                    ret if ret == AVERROR_EOF as c_int => {
+                    _ if ret == AVERROR_EOF => {
                         stream_context.end_of_file = true;
                         break;
                     }
-                    ret => {
-                        return Err(anyhow!("receipt from codec failed. index:{}, error:{:?}", stream_index, averror!(ret)));
+                    r => {
+                        return Err(anyhow!("receipt from codec failed. index:{}, error:{:?}", stream_index, averror!(r)));
                     }
                 }
             }
         }
         Ok(())
+    }
+
+    pub fn get_status(&self) -> &KPCodecStatus {
+        &self.status
     }
 }
 
@@ -367,9 +432,8 @@ fn open_file() {
     decode.find_streams().unwrap();
     decode.open_codec().unwrap();
 
-    for get_frame in decode {
+    for get_frame in decode.iter() {
         let (media_type, frame) = get_frame.unwrap();
         info!("get frame. pts: {}, media_type: {}", frame.get().pts, media_type);
     }
 }
-

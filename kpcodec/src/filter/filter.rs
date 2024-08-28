@@ -17,16 +17,17 @@ impl KPFilter {
         Ok(KPFilter {
             filter_name,
             arguments,
-            ..Default::default()
+            filter: KPAVFilter::from(filter),
         })
     }
 
     pub fn create_by_graph(&self, filter_graph: &KPAVFilterGraph) -> Result<KPAVFilterContext> {
-        let filter_context = KPAVFilterContext::default();
+        assert!(!self.filter.is_null());
+        let mut filter_context: *mut AVFilterContext = ptr::null_mut();
         let ret = unsafe {
             avfilter_graph_create_filter(
-                &mut filter_context.as_ptr(),
-                self.filter.get(),
+                &mut filter_context,
+                self.filter.as_ptr(),
                 cstring!(self.filter_name.clone()).as_ptr(),
                 cstring!(self.format_arguments()).as_ptr(),
                 ptr::null_mut(),
@@ -35,7 +36,13 @@ impl KPFilter {
         if ret < 0 {
             return Err(anyhow!("create filter by graph failed. error: {:?}", averror!(ret)));
         }
-        Ok(filter_context)
+        assert!(!filter_context.is_null());
+
+        Ok(KPAVFilterContext::from(filter_context))
+    }
+
+    pub fn get_name(&self) -> &String {
+        &self.filter_name
     }
 
     fn format_arguments(&self) -> String {

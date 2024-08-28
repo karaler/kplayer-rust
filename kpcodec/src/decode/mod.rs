@@ -16,6 +16,5 @@ use std::ffi::c_int;
 use log::{debug, warn};
 use std::collections::VecDeque;
 use log::trace;
-use std::ffi::c_char;
 
-mod decode;
+pub mod decode;

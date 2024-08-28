@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use crate::util::*;
 
 // KPAVFormatContext
@@ -82,7 +83,7 @@ impl KPAVDictionary {
 }
 
 // KPAVMediaType
-#[derive(Eq, PartialEq, Debug, Hash, Clone)]
+#[derive(Eq, PartialEq, Debug, Hash, Copy, Clone)]
 pub struct KPAVMediaType(AVMediaType);
 
 impl Display for KPAVMediaType {
@@ -99,11 +100,27 @@ impl Default for KPAVMediaType {
 }
 
 impl KPAVMediaType {
+    pub const KPAVMEDIA_TYPE_VIDEO: KPAVMediaType = KPAVMediaType(AVMEDIA_TYPE_VIDEO);
+    pub const KPAVMEDIA_TYPE_AUDIO: KPAVMediaType = KPAVMediaType(AVMEDIA_TYPE_AUDIO);
+
     pub fn from(media_type: AVMediaType) -> Self {
         KPAVMediaType(media_type)
     }
+
     pub fn get(&self) -> AVMediaType {
         self.0
+    }
+
+    pub fn is_unknown(&self) -> bool {
+        self.0 == AVMEDIA_TYPE_UNKNOWN
+    }
+
+    pub fn is_video(&self) -> bool {
+        self.0 == AVMEDIA_TYPE_VIDEO
+    }
+
+    pub fn is_audio(&self) -> bool {
+        self.0 == AVMEDIA_TYPE_AUDIO
     }
 }
 
@@ -168,6 +185,7 @@ impl KPAVCodecContext {
         } else {
             return Err(anyhow!("invalid codec type"));
         }
+        info!("flush codec context success");
         self.is_flushed = true;
         Ok(())
     }
@@ -192,14 +210,19 @@ impl Drop for KPAVFrame {
 }
 
 impl KPAVFrame {
+    pub fn new() -> Self {
+        KPAVFrame(unsafe { av_frame_alloc() })
+    }
+
     pub fn get(&self) -> &mut AVFrame {
         if self.0.is_null() {
             panic!("zero pointer");
         }
         unsafe { self.0.as_mut().unwrap() }
     }
-    pub fn new() -> Self {
-        KPAVFrame(unsafe { av_frame_alloc() })
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_null() || self.get().buf.is_empty()
     }
 }
 
@@ -239,10 +262,17 @@ impl Default for KPAVRational {
     }
 }
 
+impl Display for KPAVRational {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", format!("{}/{}", self.0.num, self.0.den))
+    }
+}
+
 impl KPAVRational {
-    pub fn from(rational: &AVRational) -> Self {
+    pub fn from(rational: AVRational) -> Self {
         KPAVRational(AVRational { num: rational.num, den: rational.den })
     }
+
     pub fn get(&self) -> AVRational {
         self.0
     }
@@ -274,6 +304,11 @@ impl KPAVFilterGraph {
         }
     }
 
+    pub fn as_ptr(&self) -> *mut AVFilterGraph {
+        assert!(!self.filter_graph.is_null());
+        self.filter_graph
+    }
+
     pub fn get(&self) -> &mut AVFilterGraph {
         assert!(!self.filter_graph.is_null());
         if self.filter_graph.is_null() {
@@ -286,7 +321,7 @@ impl KPAVFilterGraph {
 
 // KPFilter
 #[derive(Clone)]
-pub struct KPAVFilter(*mut AVFilter);
+pub struct KPAVFilter(*const AVFilter);
 
 impl Default for KPAVFilter {
     fn default() -> Self {
@@ -295,13 +330,16 @@ impl Default for KPAVFilter {
 }
 
 impl KPAVFilter {
-    pub fn get(&self) -> &mut AVFilter {
-        assert!(!self.0.is_null());
-        if self.0.is_null() {
-            panic!("zero pointer");
-        }
+    pub fn as_ptr(&self) -> *const AVFilter {
+        self.0
+    }
 
-        unsafe { self.0.as_mut().unwrap() }
+    pub fn from(filter: *const AVFilter) -> Self {
+        KPAVFilter(filter)
+    }
+
+    pub fn is_null(&self) -> bool {
+        self.0.is_null()
     }
 }
 
@@ -325,6 +363,10 @@ impl KPAVFilterContext {
         unsafe { self.filter_context.as_mut().unwrap() }
     }
 
+    pub fn from(filter_context: *mut AVFilterContext) -> Self {
+        KPAVFilterContext { filter_context }
+    }
+
     pub fn as_ptr(&self) -> *mut AVFilterContext {
         self.filter_context
     }
@@ -335,5 +377,49 @@ impl KPAVFilterContext {
 
     pub fn get_output_count(&self) -> usize {
         self.get().nb_outputs as usize
+    }
+
+    pub fn is_null(&self) -> bool {
+        self.filter_context.is_null()
+    }
+}
+
+// KPAVPixelFormat
+pub struct KPAVPixelFormat(AVPixelFormat);
+
+impl Display for KPAVPixelFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = unsafe { av_get_pix_fmt_name(self.0) };
+        write!(f, "{}", format!("{}", cstr!(name)))
+    }
+}
+
+impl KPAVPixelFormat {
+    pub fn as_str(&self) -> String {
+        format!("{}", self.0)
+    }
+
+    pub fn from(pix_fmt: AVPixelFormat) -> Self {
+        KPAVPixelFormat(pix_fmt)
+    }
+}
+
+// KPAVSampleFormat
+pub struct KPAVSampleFormat(AVSampleFormat);
+
+impl Display for KPAVSampleFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = unsafe { av_get_sample_fmt_name(self.0) };
+        write!(f, "{}", format!("{}", cstr!(name)))
+    }
+}
+
+impl KPAVSampleFormat {
+    pub fn as_str(&self) -> String {
+        format!("{}", self.0.to_string())
+    }
+
+    pub fn from(sample_format: AVSampleFormat) -> Self {
+        KPAVSampleFormat(sample_format)
     }
 }

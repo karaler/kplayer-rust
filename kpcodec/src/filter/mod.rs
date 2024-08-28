@@ -17,6 +17,13 @@ use log::{debug, warn};
 use std::collections::VecDeque;
 use log::trace;
 use std::ffi::c_char;
+use std::ffi::c_uint;
+use crate::filter::filter::KPFilter;
+use crate::filter::graph::KPGraphSourceAttribute;
 
-mod filter;
-mod graph;
+pub mod filter;
+pub mod graph;
+
+pub trait KPGraphSource {
+    fn get_source(&self, media_type: &KPAVMediaType) -> Result<KPGraphSourceAttribute>;
+}
