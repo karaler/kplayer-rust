@@ -1,4 +1,6 @@
-use std::fmt::Display;
+use std::ffi::CString;
+use crate::init::initialize;
+use crate::mut_ptr;
 use crate::util::*;
 
 // KPAVFormatContext
@@ -15,6 +17,7 @@ impl Drop for KPAVFormatContext {
     fn drop(&mut self) {
         if !self.0.is_null() {
             unsafe { avformat_free_context(self.0); }
+            self.0 = ptr::null_mut();
         }
     }
 }
@@ -23,6 +26,11 @@ impl KPAVFormatContext {
     pub fn new() -> Self {
         KPAVFormatContext(unsafe { avformat_alloc_context() })
     }
+
+    pub fn from(format_context: *mut AVFormatContext) -> Self {
+        KPAVFormatContext(format_context)
+    }
+
     pub fn get(&self) -> &mut AVFormatContext {
         if self.0.is_null() {
             panic!("zero pointer");
@@ -30,42 +38,52 @@ impl KPAVFormatContext {
 
         unsafe { self.0.as_mut().unwrap() }
     }
+
     pub fn as_ptr(&self) -> *mut AVFormatContext {
         self.0
+    }
+
+    pub fn is_null(&self) -> bool {
+        self.0.is_null()
     }
 }
 
 // KPAVDictionary
 pub struct KPAVDictionary {
-    pub ptr: *mut *mut AVDictionary,
+    pub ptr: *mut AVDictionary,
     pub values: HashMap<String, String>,
 }
 
 impl Drop for KPAVDictionary {
     fn drop(&mut self) {
-        unsafe { av_dict_free(self.ptr); }
+        if !self.ptr.is_null() {
+            unsafe { av_dict_free(&mut self.ptr); }
+            self.ptr = ptr::null_mut();
+        }
     }
 }
 
 impl KPAVDictionary {
     pub fn new<T: ToString>(values: &HashMap<T, T>) -> Self {
         let mut dict: *mut AVDictionary = ptr::null_mut();
-        unsafe {
-            for (key, value) in values {
-                av_dict_set(&mut dict, cstring!(key.to_string()).as_ptr(), cstring!(value.to_string()).as_ptr(), 0);
-            }
+        for (key, value) in values {
+            let key_cstring = cstring!(key.to_string());
+            let value_cstring = cstring!(value.to_string());
+            unsafe { av_dict_set(&mut dict, key_cstring.as_ptr(), value_cstring.as_ptr(), 0) };
         }
 
         KPAVDictionary {
-            ptr: &mut dict,
+            ptr: dict,
             values: values.iter().map(|(key, value)| (key.to_string(), value.to_string())).collect(),
         }
     }
-    pub fn get(&self) -> *mut *mut AVDictionary {
+
+    pub fn get(&self) -> *mut AVDictionary {
         self.ptr
     }
-    pub fn from(ptr: *const AVDictionary) -> HashMap<String, String> {
-        let mut map = HashMap::new();
+
+    pub fn from(ptr: *const AVDictionary) -> BTreeMap<String, String> {
+        let mut map = BTreeMap::new();
         unsafe {
             let mut tag: *mut AVDictionaryEntry = ptr::null_mut();
             tag = av_dict_get(ptr, cstring!("").as_ptr(), tag, AV_DICT_IGNORE_SUFFIX as c_int);
@@ -80,6 +98,14 @@ impl KPAVDictionary {
 
         map
     }
+}
+
+#[test]
+fn test_dict() {
+    initialize();
+    let mut map: HashMap<String, String> = HashMap::new();
+    map.insert("hello".to_string(), "world".to_string());
+    let dict = KPAVDictionary::new(&map);
 }
 
 // KPAVMediaType
@@ -142,7 +168,10 @@ impl Default for KPAVCodecContext {
 
 impl Drop for KPAVCodecContext {
     fn drop(&mut self) {
-        if !self.codec_context.is_null() { unsafe { avcodec_free_context(&mut self.codec_context) } }
+        if !self.codec_context.is_null() {
+            unsafe { avcodec_free_context(&mut self.codec_context) };
+            self.codec_context = ptr::null_mut();
+        }
     }
 }
 
@@ -204,7 +233,10 @@ impl Default for KPAVFrame {
 impl Drop for KPAVFrame {
     fn drop(&mut self) {
         if !self.0.is_null() {
-            unsafe { av_frame_free(&mut self.0) }
+            unsafe {
+                av_frame_free(&mut self.0);
+                self.0 = ptr::null_mut();
+            }
         }
     }
 }
@@ -243,11 +275,17 @@ impl KPAVPacket {
         }
         unsafe { self.0.as_mut().unwrap() }
     }
+
     pub fn new() -> Self {
         KPAVPacket(unsafe { av_packet_alloc() })
     }
+
     pub fn clean(&self) {
         unsafe { av_packet_unref(self.0) }
+    }
+
+    pub fn is_valid(&self) -> bool {
+        !self.0.is_null() && self.get().pts != AV_NOPTS_VALUE
     }
 }
 
@@ -269,7 +307,7 @@ impl Display for KPAVRational {
 }
 
 impl KPAVRational {
-    pub fn from(rational: AVRational) -> Self {
+    pub const fn from(rational: AVRational) -> Self {
         KPAVRational(AVRational { num: rational.num, den: rational.den })
     }
 
@@ -292,7 +330,10 @@ impl Default for KPAVFilterGraph {
 impl Drop for KPAVFilterGraph {
     fn drop(&mut self) {
         if !self.filter_graph.is_null() {
-            unsafe { avfilter_graph_free(&mut self.filter_graph) }
+            unsafe {
+                avfilter_graph_free(&mut self.filter_graph);
+                self.filter_graph = ptr::null_mut();
+            }
         }
     }
 }
@@ -385,6 +426,7 @@ impl KPAVFilterContext {
 }
 
 // KPAVPixelFormat
+#[derive(Debug)]
 pub struct KPAVPixelFormat(AVPixelFormat);
 
 impl Display for KPAVPixelFormat {
@@ -399,18 +441,23 @@ impl KPAVPixelFormat {
         format!("{}", self.0)
     }
 
-    pub fn from(pix_fmt: AVPixelFormat) -> Self {
+    pub const fn from(pix_fmt: AVPixelFormat) -> Self {
         KPAVPixelFormat(pix_fmt)
+    }
+
+    pub fn get(&self) -> AVPixelFormat {
+        self.0
     }
 }
 
 // KPAVSampleFormat
+#[derive(Debug)]
 pub struct KPAVSampleFormat(AVSampleFormat);
 
 impl Display for KPAVSampleFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = unsafe { av_get_sample_fmt_name(self.0) };
-        write!(f, "{}", format!("{}", cstr!(name)))
+        write!(f, "{}", cstr!(name))
     }
 }
 
@@ -419,7 +466,31 @@ impl KPAVSampleFormat {
         format!("{}", self.0.to_string())
     }
 
-    pub fn from(sample_format: AVSampleFormat) -> Self {
+    pub const fn from(sample_format: AVSampleFormat) -> Self {
         KPAVSampleFormat(sample_format)
+    }
+
+    pub fn get(&self) -> AVSampleFormat {
+        self.0
+    }
+}
+
+// KPAVCodecId
+#[derive(Eq, PartialEq, Debug, Default)]
+pub struct KPAVCodecId(AVCodecID);
+
+impl Display for KPAVCodecId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let name = unsafe { avcodec_get_name(self.0) };
+        write!(f, "{}", cstr!(name))
+    }
+}
+
+impl KPAVCodecId {
+    pub const fn from(codec_id: AVCodecID) -> Self {
+        KPAVCodecId(codec_id)
+    }
+    pub fn get(&self) -> AVCodecID {
+        self.0
     }
 }
