@@ -1,4 +1,5 @@
 use std::ffi::CString;
+use std::ptr::null_mut;
 use crate::init::initialize;
 use crate::mut_ptr;
 use crate::util::*;
@@ -37,6 +38,10 @@ impl KPAVFormatContext {
         }
 
         unsafe { self.0.as_mut().unwrap() }
+    }
+
+    pub fn set(&mut self, format_context: *mut AVFormatContext) {
+        self.0 = format_context;
     }
 
     pub fn as_ptr(&self) -> *mut AVFormatContext {
@@ -80,6 +85,10 @@ impl KPAVDictionary {
 
     pub fn get(&self) -> *mut AVDictionary {
         self.ptr
+    }
+
+    pub fn set(&mut self, ptr: *mut AVDictionary) {
+        self.ptr = ptr;
     }
 
     pub fn from(ptr: *const AVDictionary) -> BTreeMap<String, String> {
@@ -308,11 +317,18 @@ impl Display for KPAVRational {
 
 impl KPAVRational {
     pub const fn from(rational: AVRational) -> Self {
-        KPAVRational(AVRational { num: rational.num, den: rational.den })
+        KPAVRational(rational)
+    }
+    pub const fn from_fps(fps: usize) -> Self {
+        KPAVRational(AVRational { num: fps as c_int, den: 1 })
     }
 
     pub fn get(&self) -> AVRational {
         self.0
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.num == 0 && self.0.den == 1
     }
 }
 
@@ -492,5 +508,8 @@ impl KPAVCodecId {
     }
     pub fn get(&self) -> AVCodecID {
         self.0
+    }
+    pub fn is_none(&self) -> bool {
+        self.0 == AV_CODEC_ID_NONE
     }
 }

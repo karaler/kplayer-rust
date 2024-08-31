@@ -1,24 +1,10 @@
+use crate::decode::decode::KPDecode;
 use crate::filter::*;
+use crate::util::encode_parameter::{KPEncodeParameter, KPEncodeParameterPreset, KPEncodeParameterProfile, KPEncodeParameterRely};
+use crate::util::encode_source::{KPEncodeSourceAttribute, KPEncodeSourceRely};
 
 const WARN_QUEUE_LIMIT: usize = 500;
 
-pub enum KPGraphSourceAttribute {
-    Video {
-        width: usize,
-        height: usize,
-        pix_fmt: KPAVPixelFormat,
-        time_base: KPAVRational,
-        frame_rate: KPAVRational,
-        pixel_aspect: KPAVRational,
-    },
-    Audio {
-        sample_rate: usize,
-        sample_fmt: KPAVSampleFormat,
-        channel_layout: usize,
-        channels: usize,
-        time_base: KPAVRational,
-    },
-}
 
 #[derive(Default, Eq, PartialEq, Debug)]
 pub enum KPGraphStatus {
@@ -55,23 +41,51 @@ impl<'a> Iterator for KPGraphIterator<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let graph = &mut self.graph;
-        if let Some(frame) = graph.frames.pop_back() {
-            return Some(Ok(frame));
-        }
 
         // stream to queue
         if let Err(err) = graph.stream_from_graph() {
             return Some(Err(err));
         }
+
+        if let Some(frame) = graph.frames.pop_back() {
+            return Some(Ok(frame));
+        }
+
         None
     }
 }
 
-impl KPGraph {
-    pub fn iter(&mut self) -> KPGraphIterator {
-        KPGraphIterator {
-            graph: self,
-        }
+impl KPEncodeSourceRely for KPGraph {
+    fn get_source(&self, media_type: &KPAVMediaType) -> Result<KPEncodeSourceAttribute> {
+        assert_eq!(self.status, KPGraphStatus::Opened);
+        assert_eq!(&self.media_type, media_type);
+
+        let sink_chain = self.filter_chain.last().unwrap().last().unwrap();
+        let param = match self.media_type {
+            m if m.eq(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO) => {
+                KPEncodeSourceAttribute::Video {
+                    width: unsafe { av_buffersink_get_w(sink_chain.filter_context.get()) } as usize,
+                    height: unsafe { av_buffersink_get_h(sink_chain.filter_context.get()) } as usize,
+                    pix_fmt: KPAVPixelFormat::from(unsafe { av_buffersink_get_format(sink_chain.filter_context.get()) as AVPixelFormat }),
+                    time_base: KPAVRational::from(unsafe { av_buffersink_get_frame_rate(sink_chain.filter_context.get()) }),
+                    frame_rate: KPAVRational::from(unsafe { av_buffersink_get_frame_rate(sink_chain.filter_context.get()) }),
+                    pixel_aspect: KPAVRational::from(unsafe { av_buffersink_get_sample_aspect_ratio(sink_chain.filter_context.get()) }),
+                }
+            }
+            m if m.eq(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO) => {
+                KPEncodeSourceAttribute::Audio {
+                    sample_rate: unsafe { av_buffersink_get_sample_rate(sink_chain.filter_context.get()) } as usize,
+                    sample_fmt: KPAVSampleFormat::from(unsafe { av_buffersink_get_format(sink_chain.filter_context.get()) as AVSampleFormat }),
+                    channel_layout: unsafe { av_buffersink_get_channel_layout(sink_chain.filter_context.get()) } as usize,
+                    channels: unsafe { av_buffersink_get_channels(sink_chain.filter_context.get()) } as usize,
+                    time_base: Default::default(),
+                }
+            }
+            m => {
+                return Err(anyhow!("not support media type get params. media_type: {}", m));
+            }
+        };
+        Ok(param)
     }
 }
 
@@ -87,11 +101,11 @@ impl KPGraph {
         }
     }
 
-    pub fn injection_source(&mut self, source: &dyn KPGraphSource) -> Result<()> {
+    pub fn injection_source(&mut self, source: &dyn KPEncodeSourceRely) -> Result<()> {
         assert_eq!(self.status, KPGraphStatus::None);
         assert!(!self.media_type.is_unknown());
         match source.get_source(&self.media_type)? {
-            KPGraphSourceAttribute::Video { width, height, pix_fmt, time_base, frame_rate, pixel_aspect } => {
+            KPEncodeSourceAttribute::Video { width, height, pix_fmt, time_base, pixel_aspect, frame_rate } => {
                 assert_eq!(self.media_type, KPAVMediaType::from(AVMEDIA_TYPE_VIDEO));
                 let mut arguments = HashMap::new();
                 arguments.insert("width".to_string(), width.to_string());
@@ -103,7 +117,7 @@ impl KPGraph {
                 let filter = KPFilter::new("buffer", arguments)?;
                 self.add_filter(vec![filter])?;
             }
-            KPGraphSourceAttribute::Audio { sample_rate, sample_fmt, channel_layout, channels, time_base } => {
+            KPEncodeSourceAttribute::Audio { sample_rate, sample_fmt, channel_layout, channels, time_base } => {
                 assert_eq!(self.media_type, KPAVMediaType::from(AVMEDIA_TYPE_AUDIO));
                 let mut arguments = HashMap::new();
                 arguments.insert("sample_rate".to_string(), sample_rate.to_string());
@@ -180,14 +194,14 @@ impl KPGraph {
 
     // only on audio graph
     pub fn set_frame_size(&mut self, frame_size: usize) -> Result<()> {
-        assert_eq!(self.status, KPGraphStatus::Initialized);
+        matches!(self.status, KPGraphStatus::Initialized | KPGraphStatus::Opened);
         let sink = self.filter_chain.last().unwrap().first().unwrap();
         unsafe { av_buffersink_set_frame_size(sink.filter_context.get(), frame_size as c_uint) };
         self.audio_frame_size = Some(frame_size);
         Ok(())
     }
 
-    fn link(&mut self) -> Result<()> {
+    pub fn link(&mut self) -> Result<()> {
         assert_eq!(self.status, KPGraphStatus::Initialized);
         let mut chain_ref: Option<&Vec<KPGraphChain>> = None;
         for (index, next_chain) in self.filter_chain.iter().enumerate() {
@@ -243,13 +257,6 @@ impl KPGraph {
             return Err(anyhow!("parse graph config failed. error: {:?}", averror!(ret)));
         }
 
-        // validate frame_size on audio graph
-        if self.media_type == KPAVMediaType::from(AVMEDIA_TYPE_AUDIO) {
-            if self.audio_frame_size.is_none() {
-                return Err(anyhow!("the frame size can not be none when using an audio graph"));
-            }
-        }
-
         self.status = KPGraphStatus::Opened;
         Ok(())
     }
@@ -258,6 +265,13 @@ impl KPGraph {
         assert!(!frame.is_empty());
         assert_eq!(self.status, KPGraphStatus::Opened);
         trace!("stream to graph. frame pts: {}, media_type: {}", frame.get().pts, self.media_type);
+
+        // validate frame_size on audio graph
+        if self.media_type == KPAVMediaType::from(AVMEDIA_TYPE_AUDIO) {
+            if self.audio_frame_size.is_none() {
+                return Err(anyhow!("the frame size can not be none when using an audio graph"));
+            }
+        }
 
         let source_filter = self.filter_chain.first().unwrap();
         let ret = unsafe { av_buffersrc_add_frame(source_filter.first().unwrap().filter_context.get(), frame.get()) };
@@ -313,13 +327,22 @@ impl KPGraph {
     }
 }
 
+impl KPGraph {
+    pub fn iter(&mut self) -> KPGraphIterator {
+        KPGraphIterator {
+            graph: self,
+        }
+    }
+}
+
+
 #[test]
 fn test_filter() {
     use crate::decode::decode::KPDecode;
 
     initialize();
     let mut decode = KPDecode::new(env::var("INPUT_PATH").unwrap());
-    decode.open_file().unwrap();
+    decode.open().unwrap();
 
     // set expect stream
     let mut expect_streams = HashMap::new();

@@ -11,3 +11,5 @@ log = "0.4.22"
 once_cell = "1.19.0"
 rusty_ffmpeg = { version = "0.16.1+ffmpeg.7.0", features = ["link_system_ffmpeg"] }
 serde = { version = "1.0.204", features = ["derive"] }
+strum = "0.26.3"
+strum_macros = "0.26.4"

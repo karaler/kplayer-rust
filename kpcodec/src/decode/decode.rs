@@ -1,8 +1,8 @@
 use std::ffi::c_char;
 use std::slice::Iter;
 use crate::decode::*;
-use crate::filter::graph::KPGraphSourceAttribute;
-use crate::filter::KPGraphSource;
+use crate::util::encode_parameter::{KPEncodeParameter, KPEncodeParameterPreset, KPEncodeParameterProfile, KPEncodeParameterRely};
+use crate::util::encode_source::{KPEncodeSourceAttribute, KPEncodeSourceRely};
 
 const WARN_QUEUE_LIMIT: usize = 500;
 
@@ -12,7 +12,7 @@ pub struct KPDecodeStreamContext {
     time_base: KPAVRational,
     codec_context_ptr: KPAVCodecContext,
     end_of_file: bool,
-    metadata: HashMap<String, String>,
+    metadata: BTreeMap<String, String>,
     frames: VecDeque<KPAVFrame>,
 }
 
@@ -73,27 +73,20 @@ impl<'a> Iterator for KPDecodeIterator<'a> {
     }
 }
 
-impl KPDecode {
-    pub fn iter(&mut self) -> KPDecodeIterator {
-        KPDecodeIterator {
-            decode: self,
-        }
-    }
-}
-
-impl KPGraphSource for KPDecode {
-    fn get_source(&self, media_type: &KPAVMediaType) -> Result<KPGraphSourceAttribute> {
+impl KPEncodeSourceRely for KPDecode {
+    fn get_source(&self, media_type: &KPAVMediaType) -> Result<KPEncodeSourceAttribute> {
+        assert_eq!(self.status, KPCodecStatus::Started);
+        let get_stream_index = |media_type: &KPAVMediaType| {
+            match self.expect_stream_index.get(media_type) {
+                None => Err(anyhow!("not exist except stream. media_type: {}", media_type)),
+                Some(i) => Ok(i.unwrap()),
+            }
+        };
         match media_type.clone() {
             m if m == KPAVMediaType::KPAVMEDIA_TYPE_VIDEO => {
-                let stream_index = {
-                    match self.expect_stream_index.get(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO) {
-                        None => { return Err(anyhow!("not exist except stream. media_type: {}", media_type)); }
-                        Some(i) => i.unwrap(),
-                    }
-                };
-                let video_stream_context = self.streams.get(&stream_index).unwrap();
+                let video_stream_context = self.streams.get(&get_stream_index(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO)?).unwrap();
                 let codec_context = video_stream_context.codec_context_ptr.get();
-                Ok(KPGraphSourceAttribute::Video {
+                Ok(KPEncodeSourceAttribute::Video {
                     width: codec_context.width as usize,
                     height: codec_context.height as usize,
                     pix_fmt: KPAVPixelFormat::from(codec_context.pix_fmt),
@@ -103,15 +96,9 @@ impl KPGraphSource for KPDecode {
                 })
             }
             m if m == KPAVMediaType::KPAVMEDIA_TYPE_AUDIO => {
-                let stream_index = {
-                    match self.expect_stream_index.get(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO) {
-                        None => { return Err(anyhow!("not exist except stream. media_type: {}", media_type)); }
-                        Some(i) => i.unwrap(),
-                    }
-                };
-                let audio_stream_context = self.streams.get(&stream_index).unwrap();
+                let audio_stream_context = self.streams.get(&get_stream_index(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO)?).unwrap();
                 let codec_context = audio_stream_context.codec_context_ptr.get();
-                Ok(KPGraphSourceAttribute::Audio {
+                Ok(KPEncodeSourceAttribute::Audio {
                     sample_rate: codec_context.sample_rate as usize,
                     sample_fmt: KPAVSampleFormat::from(codec_context.sample_fmt),
                     channel_layout: codec_context.channel_layout as usize,
@@ -123,6 +110,44 @@ impl KPGraphSource for KPDecode {
                 Err(anyhow!("not support media type. media_type: {}", m))
             }
         }
+    }
+}
+
+impl KPEncodeParameterRely for KPDecode {
+    fn get_parameter(&self, media_type: &KPAVMediaType) -> Result<KPEncodeParameter> {
+        assert_eq!(self.status, KPCodecStatus::Started);
+
+        let expect_stream_index = {
+            match self.expect_stream_index.get(media_type) {
+                None => return Err(anyhow!("not support media type. media_type: {}", media_type)),
+                Some(stream_index) => stream_index.unwrap(),
+            }
+        };
+        let stream_context = self.streams.get(&expect_stream_index).unwrap();
+        let param = match media_type {
+            m if m.eq(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO) => {
+                KPEncodeParameter::Video {
+                    codec_id: KPAVCodecId::from(stream_context.codec_context_ptr.get().codec_id),
+                    max_bitrate: 0,
+                    quality: 0,
+                    profile: KPEncodeParameterProfile::High,
+                    preset: KPEncodeParameterPreset::VeryFast,
+                    fps: KPAVRational::from(stream_context.codec_context_ptr.get().framerate),
+                    gop_uint: 0,
+                    metadata: Default::default(),
+                }
+            }
+            m if m.eq(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO) => {
+                KPEncodeParameter::Audio {
+                    codec_id: KPAVCodecId::from(stream_context.codec_context_ptr.get().codec_id),
+                    metadata: Default::default(),
+                }
+            }
+            _ => {
+                return Err(anyhow!("not support media type get params. media_type: {}", media_type));
+            }
+        };
+        Ok(param)
     }
 }
 
@@ -149,17 +174,28 @@ impl KPDecode {
     }
 
     // operate
-    pub fn open_file(&mut self) -> Result<()> {
-        assert_eq!(self.status, KPCodecStatus::Created);
+    pub fn open(&mut self) -> Result<()> {
+        assert_eq!(self.status, KPCodecStatus::None);
+
 
         // open file
-        self.format_context_ptr = KPAVFormatContext::new();
-        let filepath: CString = cstring!(self.input_path.clone());
-        let open_options = KPAVDictionary::new(&self.format_context_options);
-        let ret = unsafe {
-            avformat_open_input(&mut self.format_context_ptr.as_ptr(), filepath.as_ptr(), ptr::null_mut(), open_options.get())
-        };
-        if ret < 0 { return Err(anyhow!("open input failed. error: {:?}",  averror!(ret))); }
+        {
+            let mut open_options = KPAVDictionary::new(&self.format_context_options);
+            let mut open_options_ptr = open_options.get();
+
+            self.format_context_ptr = KPAVFormatContext::new();
+            let mut format_context_ptr = self.format_context_ptr.as_ptr();
+
+            let filepath: CString = cstring!(self.input_path.clone());
+            let ret = unsafe {
+                avformat_open_input(&mut format_context_ptr, filepath.as_ptr(), ptr::null_mut(), &mut open_options_ptr)
+            };
+            if ret < 0 { return Err(anyhow!("open input failed. error: {:?}",  averror!(ret))); }
+            open_options.set(open_options_ptr);
+
+            assert_eq!(open_options_ptr, open_options.get());
+            assert_eq!(format_context_ptr, self.format_context_ptr.as_ptr());
+        }
 
         // read information
         let format_context = self.format_context_ptr.get();
@@ -175,7 +211,6 @@ impl KPDecode {
         self.status = KPCodecStatus::Opened;
         info!("open file success. path:{}, format_name:{}, start_time:{:?}, duration:{:?}, bit_rate:{}",
             self.input_path, self.format_name,self.start_time,self.duration,self.bit_rate);
-
         Ok(())
     }
 
@@ -369,11 +404,10 @@ impl KPDecode {
 
     pub fn stream_from_codec(&mut self) -> Result<()> {
         assert!(matches!(self.status, KPCodecStatus::Started|KPCodecStatus::Ended));
-        let non_end_streams: Vec<bool> = self.expect_stream_index.iter().map(|(_, v)| {
+        if !self.expect_stream_index.iter().any(|(_, v)| {
             let stream_context = self.streams.get(&v.unwrap()).unwrap();
             !stream_context.end_of_file
-        }).collect();
-        if non_end_streams.len() == 0 {
+        }) {
             self.status = KPCodecStatus::Stopped;
             return Ok(());
         }
@@ -418,11 +452,19 @@ impl KPDecode {
     }
 }
 
+impl KPDecode {
+    pub fn iter(&mut self) -> KPDecodeIterator {
+        KPDecodeIterator {
+            decode: self,
+        }
+    }
+}
+
 #[test]
 fn open_file() {
     initialize();
     let mut decode = KPDecode::new(env::var("INPUT_PATH").unwrap());
-    decode.open_file().unwrap();
+    decode.open().unwrap();
 
     // set expect stream
     let mut expect_streams = HashMap::new();
