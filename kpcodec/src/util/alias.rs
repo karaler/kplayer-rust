@@ -118,7 +118,7 @@ fn test_dict() {
 }
 
 // KPAVMediaType
-#[derive(Eq, PartialEq, Debug, Hash, Copy, Clone)]
+#[derive(Eq, PartialEq, Debug, Hash, Copy, Clone,Ord, PartialOrd)]
 pub struct KPAVMediaType(AVMediaType);
 
 impl Display for KPAVMediaType {

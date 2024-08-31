@@ -78,7 +78,7 @@ pub struct KPEncode {
     format_context_ptr: KPAVFormatContext,
 
     // options
-    encode_parameter: HashMap<KPAVMediaType, KPEncodeParameter>,
+    encode_parameter: BTreeMap<KPAVMediaType, KPEncodeParameter>,
     streams: BTreeMap<usize, KPEncodeStreamContext>,
     metadata: BTreeMap<String, String>,
 
@@ -89,7 +89,7 @@ pub struct KPEncode {
 }
 
 impl KPEncode {
-    pub fn new<T: ToString>(output_format: T, encode_parameter: HashMap<KPAVMediaType, KPEncodeParameter>) -> Self {
+    pub fn new<T: ToString>(output_format: T, encode_parameter: BTreeMap<KPAVMediaType, KPEncodeParameter>) -> Self {
         let mut format_context_options = HashMap::new();
         format_context_options.insert("rw_timeout".to_string(), "10".to_string());
         KPEncode {
@@ -268,6 +268,14 @@ impl KPEncode {
         let ret = unsafe { avformat_write_header(self.format_context_ptr.get(), ptr::null_mut()) };
         if ret < 0 { return Err(anyhow!("write header failed. error: {:?}", averror!(ret))); }
 
+        // avformat_write_header will update stream context
+        // update stream context when write header
+        let format_context = self.format_context_ptr.get();
+        for (stream_index, stream_context) in self.streams.iter_mut() {
+            let stream = unsafe { (*(format_context.streams.add(stream_index.clone()))).as_mut().unwrap() };
+            stream_context.time_base = KPAVRational::from(stream.time_base);
+        }
+
         self.status = KPCodecStatus::Started;
         Ok(())
     }
@@ -412,7 +420,7 @@ fn test_encode() {
     }
 
     // create encode custom parameters
-    let mut encode_parameter = HashMap::new();
+    let mut encode_parameter = BTreeMap::new();
     for (media_type, _) in expect_streams.iter() {
         if media_type.eq(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO) {
             encode_parameter.insert(media_type.clone(), KPEncodeParameter::default(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO));
