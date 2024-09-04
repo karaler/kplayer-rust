@@ -4,8 +4,6 @@ use crate::decode::*;
 use crate::filter::graph_source::{KPGraphSourceAttribute, KPGraphSourceRely};
 use crate::util::encode_parameter::{KPEncodeParameter, KPEncodeParameterPreset, KPEncodeParameterProfile};
 
-const WARN_QUEUE_LIMIT: usize = 500;
-
 #[derive(Default, Debug)]
 pub struct KPDecodeStreamContext {
     media_type: KPAVMediaType,
@@ -13,7 +11,6 @@ pub struct KPDecodeStreamContext {
     codec_context_ptr: KPAVCodecContext,
     end_of_file: bool,
     metadata: BTreeMap<String, String>,
-    frames: VecDeque<KPAVFrame>,
 }
 
 #[derive(Default, Debug)]
@@ -57,17 +54,17 @@ impl<'a> Iterator for KPDecodeIterator<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let decode = &mut self.decode;
-        while decode.status == KPCodecStatus::Started {
-            for (media_type, index) in decode.expect_stream_index.iter() {
-                let stream_context = decode.streams.get_mut(&index.unwrap()).unwrap();
-                if let Some(frame) = stream_context.frames.pop_back() {
-                    return Some(Ok((media_type.clone(), frame)));
-                }
-            }
 
-            // stream to queue
+        // stream to queue
+        while decode.status == KPCodecStatus::Started {
             if let Err(err) = decode.stream_to_codec() { return Some(Err(err)); }
-            if let Err(err) = decode.stream_from_codec() { return Some(Err(err)); };
+            return match decode.stream_from_codec() {
+                Ok(f) => match f {
+                    None => continue,
+                    Some(frame) => Some(Ok(frame))
+                },
+                Err(err) => Some(Err(err))
+            };
         }
         None
     }
@@ -199,7 +196,6 @@ impl KPDecode {
                     codec_context_ptr: Default::default(),
                     end_of_file: false,
                     metadata,
-                    frames: Default::default(),
                 };
 
                 self.streams.insert(i, codec_context);
@@ -364,14 +360,14 @@ impl KPDecode {
         Ok(())
     }
 
-    pub fn stream_from_codec(&mut self) -> Result<()> {
+    pub fn stream_from_codec(&mut self) -> Result<Option<(KPAVMediaType, KPAVFrame)>> {
         assert!(matches!(self.status, KPCodecStatus::Started|KPCodecStatus::Ended));
         if !self.expect_stream_index.iter().any(|(_, v)| {
             let stream_context = self.streams.get(&v.unwrap()).unwrap();
             !stream_context.end_of_file
         }) {
             self.status = KPCodecStatus::Stopped;
-            return Ok(());
+            return Ok(None);
         }
 
         // receive expect stream context
@@ -387,11 +383,8 @@ impl KPDecode {
                 let ret = unsafe { avcodec_receive_frame(stream_context.codec_context_ptr.get(), frame.get()) };
                 match ret {
                     _ if ret >= 0 => {
-                        if stream_context.frames.len() >= WARN_QUEUE_LIMIT {
-                            warn!("codec context queue length overlong. size: {}, media_type:{}", stream_context.frames.len(),media_type);
-                        }
                         trace!("receipt frame. index:{}, media_type:{}, pts:{}", stream_index, media_type, frame.get().pts);
-                        stream_context.frames.push_back(frame);
+                        return Ok(Some((media_type.clone(), frame)));
                     }
                     _ if ret == AVERROR(EAGAIN) => {
                         break;
@@ -406,7 +399,7 @@ impl KPDecode {
                 }
             }
         }
-        Ok(())
+        Ok(None)
     }
 
     pub fn get_status(&self) -> &KPCodecStatus {

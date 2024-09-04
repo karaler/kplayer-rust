@@ -335,10 +335,6 @@ impl KPEncode {
                         }
                         trace!("receipt packet. index:{}, media_type:{}, pts:{}, dts: {}", stream_index, stream_context.media_type, packet.get().pts, packet.get().dts);
 
-                        if stream_index == &0 {
-                            info!("video: {}", packet);
-                        }
-
                         // transform packet
                         unsafe { av_packet_rescale_ts(packet.get(), stream_context.codec_context_ptr.get().time_base, stream_context.time_base.get()) };
                         packet.get().stream_index = stream_index.clone() as c_int;
@@ -415,7 +411,7 @@ fn test_encode() {
     // set expect stream
     let mut expect_streams = HashMap::new();
     expect_streams.insert(KPAVMediaType::KPAVMEDIA_TYPE_VIDEO, None);
-    // expect_streams.insert(KPAVMediaType::KPAVMEDIA_TYPE_AUDIO, None);
+    expect_streams.insert(KPAVMediaType::KPAVMEDIA_TYPE_AUDIO, None);
     decode.set_expect_stream(expect_streams.clone());
     decode.find_streams().unwrap();
     decode.open_codec().unwrap();

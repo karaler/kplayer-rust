@@ -3,9 +3,6 @@ use crate::filter::*;
 use crate::filter::graph_source::{KPGraphSourceAttribute, KPGraphSourceRely};
 use crate::util::encode_parameter::{KPEncodeParameter, KPEncodeParameterPreset, KPEncodeParameterProfile};
 
-const WARN_QUEUE_LIMIT: usize = 500;
-
-
 #[derive(Default, Eq, PartialEq, Debug)]
 pub enum KPGraphStatus {
     #[default]
@@ -28,7 +25,6 @@ pub struct KPGraph {
     filter_chain: Vec<Vec<KPGraphChain>>,
     status: KPGraphStatus,
     media_type: KPAVMediaType,
-    frames: VecDeque<KPAVFrame>,
     audio_frame_size: Option<usize>,
 }
 
@@ -43,15 +39,13 @@ impl<'a> Iterator for KPGraphIterator<'a> {
         let graph = &mut self.graph;
 
         // stream to queue
-        if let Err(err) = graph.stream_from_graph() {
-            return Some(Err(err));
+        match graph.stream_from_graph() {
+            Ok(frame) => return match frame {
+                None => None,
+                Some(f) => Some(Ok(f))
+            },
+            Err(err) => Some(Err(err))
         }
-
-        if let Some(frame) = graph.frames.pop_back() {
-            return Some(Ok(frame));
-        }
-
-        None
     }
 }
 
@@ -97,7 +91,6 @@ impl KPGraph {
             media_type: media_type.clone(),
             status: Default::default(),
             filter_chain: Default::default(),
-            frames: Default::default(),
             audio_frame_size: None,
         }
     }
@@ -281,34 +274,28 @@ impl KPGraph {
         Ok(())
     }
 
-    pub fn stream_from_graph(&mut self) -> Result<()> {
+    pub fn stream_from_graph(&mut self) -> Result<Option<KPAVFrame>> {
         assert_eq!(self.status, KPGraphStatus::Opened);
 
         let sink_filter = self.filter_chain.last().unwrap();
-        loop {
-            let frame = KPAVFrame::new();
-            let ret = unsafe { av_buffersink_get_frame(sink_filter.first().unwrap().filter_context.get(), frame.get()) };
-            match ret {
-                _ if ret >= 0 => {
-                    if self.frames.len() >= WARN_QUEUE_LIMIT {
-                        warn!("graph context queue length overlong. size: {}, media_type:{}", self.frames.len(), self.media_type);
-                    }
-                    trace!("stream from graph frame. media_type: {}, pts: {}", self.media_type, frame.get().pts);
-                    self.frames.push_back(frame);
-                }
-                _ if ret == AVERROR(EAGAIN) => {
-                    break;
-                }
-                _ if ret == AVERROR_EOF => {
-                    self.status = KPGraphStatus::Ended;
-                    break;
-                }
-                r => {
-                    return Err(anyhow!("stream from graph failed. error: {:?}", averror!(r)));
-                }
+        let frame = KPAVFrame::new();
+        let ret = unsafe { av_buffersink_get_frame(sink_filter.first().unwrap().filter_context.get(), frame.get()) };
+        match ret {
+            _ if ret >= 0 => {
+                trace!("stream from graph frame. media_type: {}, pts: {}", self.media_type, frame.get().pts);
+                Ok(Some(frame))
+            }
+            _ if ret == AVERROR(EAGAIN) => {
+                Ok(None)
+            }
+            _ if ret == AVERROR_EOF => {
+                self.status = KPGraphStatus::Ended;
+                Ok(None)
+            }
+            r => {
+                Err(anyhow!("stream from graph failed. error: {:?}", averror!(r)))
             }
         }
-        Ok(())
     }
 
 
