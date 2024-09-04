@@ -1,7 +1,7 @@
 use crate::decode::decode::KPDecode;
 use crate::filter::*;
-use crate::util::encode_parameter::{KPEncodeParameter, KPEncodeParameterPreset, KPEncodeParameterProfile, KPEncodeParameterRely};
-use crate::util::encode_source::{KPEncodeSourceAttribute, KPEncodeSourceRely};
+use crate::filter::graph_source::{KPGraphSourceAttribute, KPGraphSourceRely};
+use crate::util::encode_parameter::{KPEncodeParameter, KPEncodeParameterPreset, KPEncodeParameterProfile};
 
 const WARN_QUEUE_LIMIT: usize = 500;
 
@@ -55,15 +55,16 @@ impl<'a> Iterator for KPGraphIterator<'a> {
     }
 }
 
-impl KPEncodeSourceRely for KPGraph {
-    fn get_source(&self, media_type: &KPAVMediaType) -> Result<KPEncodeSourceAttribute> {
-        assert_eq!(self.status, KPGraphStatus::Opened);
+impl KPGraphSourceRely for KPGraph {
+    fn get_source(&self, media_type: &KPAVMediaType) -> Result<KPGraphSourceAttribute> {
+        assert!(matches!(self.status, KPGraphStatus::Opened | KPGraphStatus::Initialized));
         assert_eq!(&self.media_type, media_type);
 
         let sink_chain = self.filter_chain.last().unwrap().last().unwrap();
+        assert!(matches!(sink_chain.filter.get_name().as_str(), "buffersink" | "abuffersink"));
         let param = match self.media_type {
             m if m.eq(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO) => {
-                KPEncodeSourceAttribute::Video {
+                KPGraphSourceAttribute::Video {
                     width: unsafe { av_buffersink_get_w(sink_chain.filter_context.get()) } as usize,
                     height: unsafe { av_buffersink_get_h(sink_chain.filter_context.get()) } as usize,
                     pix_fmt: KPAVPixelFormat::from(unsafe { av_buffersink_get_format(sink_chain.filter_context.get()) as AVPixelFormat }),
@@ -73,7 +74,7 @@ impl KPEncodeSourceRely for KPGraph {
                 }
             }
             m if m.eq(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO) => {
-                KPEncodeSourceAttribute::Audio {
+                KPGraphSourceAttribute::Audio {
                     sample_rate: unsafe { av_buffersink_get_sample_rate(sink_chain.filter_context.get()) } as usize,
                     sample_fmt: KPAVSampleFormat::from(unsafe { av_buffersink_get_format(sink_chain.filter_context.get()) as AVSampleFormat }),
                     channel_layout: unsafe { av_buffersink_get_channel_layout(sink_chain.filter_context.get()) } as usize,
@@ -101,11 +102,11 @@ impl KPGraph {
         }
     }
 
-    pub fn injection_source(&mut self, source: &dyn KPEncodeSourceRely) -> Result<()> {
+    pub fn injection_source(&mut self, source: &dyn KPGraphSourceRely) -> Result<()> {
         assert_eq!(self.status, KPGraphStatus::None);
         assert!(!self.media_type.is_unknown());
         match source.get_source(&self.media_type)? {
-            KPEncodeSourceAttribute::Video { width, height, pix_fmt, time_base, pixel_aspect, frame_rate } => {
+            KPGraphSourceAttribute::Video { width, height, pix_fmt, time_base, pixel_aspect, frame_rate } => {
                 assert_eq!(self.media_type, KPAVMediaType::from(AVMEDIA_TYPE_VIDEO));
                 let mut arguments = HashMap::new();
                 arguments.insert("width".to_string(), width.to_string());
@@ -117,7 +118,7 @@ impl KPGraph {
                 let filter = KPFilter::new("buffer", arguments)?;
                 self.add_filter(vec![filter])?;
             }
-            KPEncodeSourceAttribute::Audio { sample_rate, sample_fmt, channel_layout, channels, time_base } => {
+            KPGraphSourceAttribute::Audio { sample_rate, sample_fmt, channel_layout, channels, time_base } => {
                 assert_eq!(self.media_type, KPAVMediaType::from(AVMEDIA_TYPE_AUDIO));
                 let mut arguments = HashMap::new();
                 arguments.insert("sample_rate".to_string(), sample_rate.to_string());
@@ -148,16 +149,16 @@ impl KPGraph {
             }
             _ => {}
         }
-
         self.status = KPGraphStatus::Initialized;
 
-        // link graph
         self.link()?;
 
         Ok(())
     }
 
     pub fn add_filter(&mut self, filter: Vec<KPFilter>) -> Result<()> {
+        assert!(matches!(self.status, KPGraphStatus::None | KPGraphStatus::Created));
+
         // create filter_context
         let mut filter_chains = Vec::new();
         for f in filter.iter() {
@@ -172,10 +173,7 @@ impl KPGraph {
                 assert_eq!(self.filter_chain.len(), 0);
             }
             KPGraphStatus::Created => {
-                assert_eq!(self.filter_chain.len(), 1);
-            }
-            KPGraphStatus::Initialized => {
-                assert!(self.filter_chain.len() >= 2);
+                assert!(self.filter_chain.len() >= 1);
                 let last_filter = self.filter_chain.last().unwrap();
                 let output_pads: usize = last_filter.iter().map(|inner| inner.filter_context.get_output_count()).sum();
                 let input_pads: usize = filter_chains.iter().map(|inner| inner.filter_context.get_input_count()).sum();
@@ -194,7 +192,7 @@ impl KPGraph {
 
     // only on audio graph
     pub fn set_frame_size(&mut self, frame_size: usize) -> Result<()> {
-        matches!(self.status, KPGraphStatus::Initialized | KPGraphStatus::Opened);
+        assert_eq!(self.status, KPGraphStatus::Opened);
         let sink = self.filter_chain.last().unwrap().first().unwrap();
         unsafe { av_buffersink_set_frame_size(sink.filter_context.get(), frame_size as c_uint) };
         self.audio_frame_size = Some(frame_size);
@@ -240,12 +238,14 @@ impl KPGraph {
 
                         let prev_pad = prev_output_pad.pop_front().unwrap();
                         let next_pad = next_output_pad.pop_front().unwrap();
-                        debug!("link filter prev name: {} index: {}, next name: {}, index: {}",
-                                prev_chain_item.filter.get_name(), prev_pad, next_chain_item.filter.get_name(), next_pad);
+                        debug!("link filter prev_name: {} prev_index: {}, next_name: {}, next_index: {}, next_args: {}",
+                                prev_chain_item.filter.get_name(), prev_pad, next_chain_item.filter.get_name(), next_pad, next_chain_item.filter.format_arguments());
                         let ret = unsafe { avfilter_link(prev_chain_item.filter_context.get(), prev_pad as c_uint, next_chain_item.filter_context.get(), next_pad as c_uint) };
                         if ret < 0 {
                             return Err(anyhow!("link failed. error: {:?}", averror!(ret)));
                         }
+
+                        chain_ref = Some(next_chain);
                     }
                 }
             }

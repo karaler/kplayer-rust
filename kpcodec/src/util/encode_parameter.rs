@@ -1,9 +1,5 @@
 use crate::util::*;
 
-pub trait KPEncodeParameterRely {
-    fn get_parameter(&self, media_type: &KPAVMediaType) -> Result<KPEncodeParameter>;
-}
-
 #[derive(Debug, Display, EnumString)]
 pub enum KPEncodeParameterProfile {
     #[strum(serialize = "high")]
@@ -20,16 +16,23 @@ pub enum KPEncodeParameterPreset {
 pub enum KPEncodeParameter {
     Video {
         codec_id: KPAVCodecId,
+        width: usize,
+        height: usize,
+        pix_fmt: KPAVPixelFormat,
+        framerate: KPAVRational,
         max_bitrate: usize,
         quality: u16,
         profile: KPEncodeParameterProfile,
         preset: KPEncodeParameterPreset,
-        fps: KPAVRational,
         gop_uint: u16,
         metadata: BTreeMap<String, String>,
     },
     Audio {
         codec_id: KPAVCodecId,
+        sample_rate: usize,
+        sample_fmt: KPAVSampleFormat,
+        channel_layout: usize,
+        channels: usize,
         metadata: BTreeMap<String, String>,
     },
 }
@@ -40,11 +43,14 @@ impl KPEncodeParameter {
             m if m.eq(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO) => {
                 KPEncodeParameter::Video {
                     codec_id: KPAVCodecId::from(AV_CODEC_ID_H264),
+                    width: 848,
+                    height: 480,
+                    pix_fmt: KPAVPixelFormat::from(AV_PIX_FMT_YUV420P),
                     max_bitrate: 0,
                     quality: 0,
                     profile: KPEncodeParameterProfile::High,
                     preset: KPEncodeParameterPreset::VeryFast,
-                    fps: KPAVRational::from_fps(25),
+                    framerate: KPAVRational::from_fps(29),
                     gop_uint: 2,
                     metadata: BTreeMap::new(),
                 }
@@ -52,6 +58,10 @@ impl KPEncodeParameter {
             m if m.eq(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO) => {
                 KPEncodeParameter::Audio {
                     codec_id: KPAVCodecId::from(AV_CODEC_ID_AAC),
+                    sample_rate: 48000,
+                    sample_fmt: KPAVSampleFormat::from(AV_SAMPLE_FMT_FLTP),
+                    channel_layout: 3,
+                    channels: 2,
                     metadata: BTreeMap::new(),
                 }
             }

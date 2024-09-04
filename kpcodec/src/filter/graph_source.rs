@@ -1,11 +1,10 @@
-use crate::util::*;
-use crate::util::encode_parameter::KPEncodeParameter;
+use crate::filter::*;
 
-pub trait KPEncodeSourceRely {
-    fn get_source(&self, media_type: &KPAVMediaType) -> Result<KPEncodeSourceAttribute>;
+pub trait KPGraphSourceRely {
+    fn get_source(&self, media_type: &KPAVMediaType) -> Result<KPGraphSourceAttribute>;
 }
 
-pub enum KPEncodeSourceAttribute {
+pub enum KPGraphSourceAttribute {
     Video {
         width: usize,
         height: usize,

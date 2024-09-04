@@ -118,7 +118,7 @@ fn test_dict() {
 }
 
 // KPAVMediaType
-#[derive(Eq, PartialEq, Debug, Hash, Copy, Clone,Ord, PartialOrd)]
+#[derive(Eq, PartialEq, Debug, Hash, Copy, Clone, Ord, PartialOrd)]
 pub struct KPAVMediaType(AVMediaType);
 
 impl Display for KPAVMediaType {
@@ -277,6 +277,16 @@ impl Default for KPAVPacket {
     }
 }
 
+impl Display for KPAVPacket {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.0.is_null() {
+            write!(f, "Null")
+        } else {
+            write!(f, "stream_index: {}, pts: {}, dts: {}", self.get().stream_index, self.get().pts, self.get().dts)
+        }
+    }
+}
+
 impl KPAVPacket {
     pub fn get(&self) -> &mut AVPacket {
         if self.0.is_null() {
@@ -289,12 +299,22 @@ impl KPAVPacket {
         KPAVPacket(unsafe { av_packet_alloc() })
     }
 
+    pub fn from(packet_ptr: *mut AVPacket) -> KPAVPacket {
+        assert!(!packet_ptr.is_null());
+        KPAVPacket(packet_ptr)
+    }
+
     pub fn clean(&self) {
         unsafe { av_packet_unref(self.0) }
     }
 
     pub fn is_valid(&self) -> bool {
         !self.0.is_null() && self.get().pts != AV_NOPTS_VALUE
+    }
+
+    pub fn copy(&self) -> KPAVPacket {
+        assert!(!self.0.is_null());
+        KPAVPacket::from(unsafe { av_packet_clone(self.0) })
     }
 }
 

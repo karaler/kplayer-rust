@@ -1,8 +1,8 @@
 use std::ffi::c_char;
 use std::slice::Iter;
 use crate::decode::*;
-use crate::util::encode_parameter::{KPEncodeParameter, KPEncodeParameterPreset, KPEncodeParameterProfile, KPEncodeParameterRely};
-use crate::util::encode_source::{KPEncodeSourceAttribute, KPEncodeSourceRely};
+use crate::filter::graph_source::{KPGraphSourceAttribute, KPGraphSourceRely};
+use crate::util::encode_parameter::{KPEncodeParameter, KPEncodeParameterPreset, KPEncodeParameterProfile};
 
 const WARN_QUEUE_LIMIT: usize = 500;
 
@@ -73,8 +73,8 @@ impl<'a> Iterator for KPDecodeIterator<'a> {
     }
 }
 
-impl KPEncodeSourceRely for KPDecode {
-    fn get_source(&self, media_type: &KPAVMediaType) -> Result<KPEncodeSourceAttribute> {
+impl KPGraphSourceRely for KPDecode {
+    fn get_source(&self, media_type: &KPAVMediaType) -> Result<KPGraphSourceAttribute> {
         assert_eq!(self.status, KPCodecStatus::Started);
         let get_stream_index = |media_type: &KPAVMediaType| {
             match self.expect_stream_index.get(media_type) {
@@ -86,7 +86,7 @@ impl KPEncodeSourceRely for KPDecode {
             m if m == KPAVMediaType::KPAVMEDIA_TYPE_VIDEO => {
                 let video_stream_context = self.streams.get(&get_stream_index(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO)?).unwrap();
                 let codec_context = video_stream_context.codec_context_ptr.get();
-                Ok(KPEncodeSourceAttribute::Video {
+                Ok(KPGraphSourceAttribute::Video {
                     width: codec_context.width as usize,
                     height: codec_context.height as usize,
                     pix_fmt: KPAVPixelFormat::from(codec_context.pix_fmt),
@@ -98,7 +98,7 @@ impl KPEncodeSourceRely for KPDecode {
             m if m == KPAVMediaType::KPAVMEDIA_TYPE_AUDIO => {
                 let audio_stream_context = self.streams.get(&get_stream_index(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO)?).unwrap();
                 let codec_context = audio_stream_context.codec_context_ptr.get();
-                Ok(KPEncodeSourceAttribute::Audio {
+                Ok(KPGraphSourceAttribute::Audio {
                     sample_rate: codec_context.sample_rate as usize,
                     sample_fmt: KPAVSampleFormat::from(codec_context.sample_fmt),
                     channel_layout: codec_context.channel_layout as usize,
@@ -110,44 +110,6 @@ impl KPEncodeSourceRely for KPDecode {
                 Err(anyhow!("not support media type. media_type: {}", m))
             }
         }
-    }
-}
-
-impl KPEncodeParameterRely for KPDecode {
-    fn get_parameter(&self, media_type: &KPAVMediaType) -> Result<KPEncodeParameter> {
-        assert_eq!(self.status, KPCodecStatus::Started);
-
-        let expect_stream_index = {
-            match self.expect_stream_index.get(media_type) {
-                None => return Err(anyhow!("not support media type. media_type: {}", media_type)),
-                Some(stream_index) => stream_index.unwrap(),
-            }
-        };
-        let stream_context = self.streams.get(&expect_stream_index).unwrap();
-        let param = match media_type {
-            m if m.eq(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO) => {
-                KPEncodeParameter::Video {
-                    codec_id: KPAVCodecId::from(stream_context.codec_context_ptr.get().codec_id),
-                    max_bitrate: 0,
-                    quality: 0,
-                    profile: KPEncodeParameterProfile::High,
-                    preset: KPEncodeParameterPreset::VeryFast,
-                    fps: KPAVRational::from(stream_context.codec_context_ptr.get().framerate),
-                    gop_uint: 0,
-                    metadata: Default::default(),
-                }
-            }
-            m if m.eq(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO) => {
-                KPEncodeParameter::Audio {
-                    codec_id: KPAVCodecId::from(stream_context.codec_context_ptr.get().codec_id),
-                    metadata: Default::default(),
-                }
-            }
-            _ => {
-                return Err(anyhow!("not support media type get params. media_type: {}", media_type));
-            }
-        };
-        Ok(param)
     }
 }
 

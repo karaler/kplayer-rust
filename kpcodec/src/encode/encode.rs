@@ -1,7 +1,5 @@
 use crate::decode::decode::KPDecodeIterator;
 use crate::encode::*;
-use crate::util::encode_parameter::KPEncodeParameterRely;
-use crate::util::encode_source::{KPEncodeSourceAttribute, KPEncodeSourceRely};
 
 const WARN_QUEUE_LIMIT: usize = 500;
 
@@ -20,49 +18,50 @@ pub struct KPEncodeIterator<'a> {
 }
 
 impl<'a> Iterator for KPEncodeIterator<'a> {
-    type Item = Result<KPAVPacket>;
+    type Item = KPAVPacket;
 
     fn next(&mut self) -> Option<Self::Item> {
         let encode = &mut self.encode;
-        assert_eq!(encode.streams.len(), 2);
 
         // stream to queue
-        if let Err(err) = encode.stream_from_encode() {
-            return Some(Err(err));
-        }
+        encode.stream_from_encode().unwrap();
+
+        let lead_stream_index = encode.lead_stream_index;
+        if encode.maintainer.is_none() {
+            match encode.streams.get_mut(&lead_stream_index).and_then(|ctx| ctx.packets.pop_front()) {
+                None => return None,
+                Some(pkt) => {
+                    encode.maintainer = Some((pkt.get().pts as usize, pkt.get().dts as usize));
+                    return Some(pkt);
+                }
+            };
+        };
 
         // get packet from queue
-        let lead_stream_index = encode.lead_stream_index;
-        let follow_stream_index = encode.streams.iter().find(|(i, _)| { i.eq(&&lead_stream_index) }).unwrap().0.clone();
-
-        // get_packet closure fn
-        let mut get_packet = |stream_index: &usize| -> Option<KPAVPacket>{
-            let get_stream_context = encode.streams.get_mut(stream_index).unwrap();
-            get_stream_context.packets.pop_back()
-        };
-        let (is_update_maintainer, packet) = match encode.maintainer {
-            None => { (false, get_packet(&lead_stream_index)) }
-            Some((lead_pts, _)) => {
-                match get_packet(&follow_stream_index) {
-                    None => (true, get_packet(&lead_stream_index)),
-                    Some(packet) => {
-                        if packet.get().pts as usize <= lead_pts.clone() {
-                            (false, Some(packet))
-                        } else {
-                            (true, get_packet(&lead_stream_index))
-                        }
+        for (follow_stream_index, follow_stream_context) in encode.streams.iter_mut() {
+            if lead_stream_index.eq(follow_stream_index) { continue; }
+            if let Some((lead_pts, _)) = encode.maintainer {
+                let follow_packet = follow_stream_context.packets.pop_front();
+                if let Some(pkt) = follow_packet {
+                    if pkt.get().pts as usize > lead_pts {
+                        trace!("renew packet to queue. stream_index: {}, pts: {}, dts: {}", follow_stream_index, pkt.get().pts, pkt.get().dts);
+                        follow_stream_context.packets.push_front(pkt);
+                        continue;
+                    } else {
+                        return Some(pkt);
                     }
+                } else {
+                    if !follow_stream_context.end_of_file { return None; }
                 }
             }
         };
 
-        match packet {
+        // send lead
+        match encode.streams.get_mut(&lead_stream_index).and_then(|ctx| ctx.packets.pop_front()) {
             None => None,
-            Some(get_packet) => {
-                if is_update_maintainer {
-                    encode.maintainer = Some((get_packet.get().pts as usize, get_packet.get().dts as usize));
-                }
-                Some(Ok(get_packet))
+            Some(pkt) => {
+                encode.maintainer = Some((pkt.get().pts as usize, pkt.get().dts as usize));
+                Some(pkt)
             }
         }
     }
@@ -86,6 +85,7 @@ pub struct KPEncode {
     lead_stream_index: usize,
     status: KPCodecStatus,
     maintainer: Option<(usize, usize)>,
+    position: Duration,
 }
 
 impl KPEncode {
@@ -108,7 +108,7 @@ impl KPEncode {
         debug!("redirect output path. path: {}", self.output_path);
     }
 
-    pub fn open(&mut self, source_map: HashMap<KPAVMediaType, &dyn KPEncodeSourceRely>) -> Result<()> {
+    pub fn open(&mut self) -> Result<()> {
         assert_eq!(self.status, KPCodecStatus::None);
 
         let output_format = unsafe { av_guess_format(cstring!(self.output_format).as_ptr(), ptr::null_mut(), ptr::null_mut()) };
@@ -158,25 +158,18 @@ impl KPEncode {
 
         // open codec
         for (media_type, param) in self.encode_parameter.iter() {
-            let source = match source_map.get(&media_type) {
-                None => return Err(anyhow!("mismatch source attribute. media_type: {}", media_type)),
-                Some(s) => s,
-            };
             let (codec_context, media_type, metadata) = match param {
-                KPEncodeParameter::Video { codec_id, max_bitrate, quality, profile, preset, fps, gop_uint, metadata } => {
+                KPEncodeParameter::Video { codec_id, width, height, pix_fmt, framerate, max_bitrate, quality, profile, preset, gop_uint, metadata } => {
                     let codec_context = create_codec_context(codec_id)?;
                     let codec = codec_context.get().codec;
 
                     // set video encode params
-                    if let KPEncodeSourceAttribute::Video { width, height, pix_fmt, time_base, frame_rate, pixel_aspect } = source.get_source(media_type)? {
-                        let target_frame_rate = if frame_rate.is_empty() { fps.get() } else { frame_rate.get() };
-                        codec_context.get().width = width.clone() as i32;
-                        codec_context.get().height = height.clone() as i32;
-                        codec_context.get().pix_fmt = pix_fmt.get();
-                        codec_context.get().framerate = target_frame_rate;
-                        codec_context.get().time_base = av_inv_q(target_frame_rate);
-                        codec_context.get().gop_size = gop_uint.clone() as c_int * target_frame_rate.num;
-                    } else { return Err(anyhow!("get source failed")); };
+                    codec_context.get().width = width.clone() as i32;
+                    codec_context.get().height = height.clone() as i32;
+                    codec_context.get().pix_fmt = pix_fmt.get();
+                    codec_context.get().framerate = framerate.get();
+                    codec_context.get().time_base = av_inv_q(framerate.get());
+                    codec_context.get().gop_size = gop_uint.clone() as c_int * framerate.get().num;
 
                     assert!(!codec.is_null());
                     let codec_name = cstr!(unsafe{(*codec).name});
@@ -212,14 +205,12 @@ impl KPEncode {
                     }
                     (codec_context, KPAVMediaType::KPAVMEDIA_TYPE_VIDEO, metadata)
                 }
-                KPEncodeParameter::Audio { codec_id, metadata } => {
+                KPEncodeParameter::Audio { codec_id, sample_rate, sample_fmt, channel_layout, channels, metadata } => {
                     let codec_context = create_codec_context(codec_id)?;
-                    if let KPEncodeSourceAttribute::Audio { sample_rate, sample_fmt, channel_layout, channels, time_base } = source.get_source(media_type)? {
-                        codec_context.get().sample_rate = sample_rate.clone() as c_int;
-                        codec_context.get().channel_layout = channel_layout.clone() as u64;
-                        codec_context.get().channels = channels.clone() as c_int;
-                        codec_context.get().sample_fmt = sample_fmt.get();
-                    } else { return Err(anyhow!("get source failed")); };
+                    codec_context.get().sample_rate = sample_rate.clone() as c_int;
+                    codec_context.get().channel_layout = channel_layout.clone() as u64;
+                    codec_context.get().channels = channels.clone() as c_int;
+                    codec_context.get().sample_fmt = sample_fmt.get();
 
                     (codec_context, KPAVMediaType::KPAVMEDIA_TYPE_AUDIO, metadata)
                 }
@@ -281,7 +272,7 @@ impl KPEncode {
     }
 
     pub fn write_trailer(&mut self) -> Result<()> {
-        assert_eq!(self.status, KPCodecStatus::Started);
+        assert_eq!(self.status, KPCodecStatus::Stopped);
         assert!(self.streams.iter().all(|(_, stream)| stream.end_of_file));
 
         let ret = unsafe { av_write_trailer(self.format_context_ptr.get()) };
@@ -294,29 +285,37 @@ impl KPEncode {
         Ok(())
     }
 
-    pub fn stream_to_encode(&mut self, frame: KPAVFrame, media_type: KPAVMediaType) -> Result<()> {
+    pub fn flush(&mut self) -> Result<()> {
+        for (stream_index, stream_context) in self.streams.iter_mut() {
+            let ret = unsafe { avcodec_send_frame(stream_context.codec_context_ptr.get(), ptr::null_mut()) };
+            if ret < 0 { return Err(anyhow!("stream to encode failed. error: {:?}", averror!(ret))); }
+            if ret == AVERROR_EOF {
+                stream_context.codec_context_ptr.flush()?;
+                debug!("stream index flushed. stream index: {}", stream_index);
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
+
+    pub fn stream_to_encode(&mut self, frame: KPAVFrame, media_type: &KPAVMediaType) -> Result<()> {
         assert!(!frame.is_empty());
         assert_eq!(self.status, KPCodecStatus::Started);
-        assert!(self.streams.iter().any(|(_, ctx)| { ctx.media_type == media_type }));
+        assert!(self.streams.iter().any(|(_, ctx)| { &ctx.media_type == media_type }));
 
-        let (stream_index, stream_context) = self.streams.iter_mut().find(|(_, stream)| { stream.media_type == media_type }).unwrap();
+        let (stream_index, stream_context) = self.streams.iter_mut().find(|(_, stream)| { &stream.media_type == media_type }).unwrap();
         assert!(!stream_context.end_of_file);
 
         let ret = unsafe { avcodec_send_frame(stream_context.codec_context_ptr.get(), frame.get()) };
-        if ret == AVERROR_EOF {
-            stream_context.codec_context_ptr.flush()?;
-            debug!("stream index flushed. stream index: {}", stream_index);
-            return Ok(());
-        }
         if ret < 0 { return Err(anyhow!("stream to encode failed. error: {:?}", averror!(ret))); }
 
         Ok(())
     }
 
     pub fn stream_from_encode(&mut self) -> Result<()> {
-        assert_eq!(self.status, KPCodecStatus::Started);
-        if !self.streams.iter().any(|(_, v)| {
-            !v.end_of_file
+        assert!(matches!(self.status, KPCodecStatus::Started | KPCodecStatus::Stopped));
+        if !self.streams.values().any(|v| {
+            v.end_of_file == false
         }) {
             self.status = KPCodecStatus::Stopped;
             return Ok(());
@@ -336,13 +335,21 @@ impl KPEncode {
                         }
                         trace!("receipt packet. index:{}, media_type:{}, pts:{}, dts: {}", stream_index, stream_context.media_type, packet.get().pts, packet.get().dts);
 
+                        if stream_index == &0 {
+                            info!("video: {}", packet);
+                        }
+
                         // transform packet
                         unsafe { av_packet_rescale_ts(packet.get(), stream_context.codec_context_ptr.get().time_base, stream_context.time_base.get()) };
                         packet.get().stream_index = stream_index.clone() as c_int;
                         trace!("transform packet. index:{}, media_type:{}, pts:{}, dts: {}", stream_index, stream_context.media_type, packet.get().pts, packet.get().dts);
 
+
                         // push packet
-                        stream_context.packets.push_back(packet);
+                        assert!(packet.is_valid());
+                        if packet.get().pts >= 0 && packet.get().dts >= 0 {
+                            stream_context.packets.push_back(packet);
+                        }
                     }
                     r if r == AVERROR(EAGAIN) => {
                         break;
@@ -363,16 +370,19 @@ impl KPEncode {
     }
 
     pub fn write(&mut self, packet: &KPAVPacket) -> Result<()> {
-        assert_eq!(self.status, KPCodecStatus::Started);
+        assert!(matches!(self.status, KPCodecStatus::Started | KPCodecStatus::Stopped));
         assert!(packet.is_valid());
 
+        debug!("write to output file packet. packet: {}", packet);
         let ret = unsafe { av_interleaved_write_frame(self.format_context_ptr.get(), packet.get()) };
-        if ret < 0 { return Err(anyhow!("write packet failed. error: {:?}", averror!(ret))); }
+        if ret < 0 {
+            return Err(anyhow!("write packet failed. error: {:?}", averror!(ret)));
+        }
         Ok(())
     }
 
     pub fn get_audio_frame_size(&self) -> Result<usize> {
-        matches!(self.status, KPCodecStatus::Opened | KPCodecStatus::Started);
+        assert!(matches!(self.status, KPCodecStatus::Opened | KPCodecStatus::Started));
         assert!(self.encode_parameter.get(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO).is_some());
 
         match self.streams.iter().find(|(index, item)| {
@@ -405,19 +415,10 @@ fn test_encode() {
     // set expect stream
     let mut expect_streams = HashMap::new();
     expect_streams.insert(KPAVMediaType::KPAVMEDIA_TYPE_VIDEO, None);
-    expect_streams.insert(KPAVMediaType::KPAVMEDIA_TYPE_AUDIO, None);
+    // expect_streams.insert(KPAVMediaType::KPAVMEDIA_TYPE_AUDIO, None);
     decode.set_expect_stream(expect_streams.clone());
     decode.find_streams().unwrap();
     decode.open_codec().unwrap();
-
-    // create graph
-    let mut graph_map = HashMap::new();
-    for (media_type, _) in expect_streams.iter() {
-        let mut graph = KPGraph::new(media_type);
-        graph.injection_source(&decode).unwrap();
-        graph.injection_sink().unwrap();
-        graph_map.insert(media_type.clone(), graph);
-    }
 
     // create encode custom parameters
     let mut encode_parameter = BTreeMap::new();
@@ -429,13 +430,71 @@ fn test_encode() {
         }
     }
 
-    let mut encode = KPEncode::new("flv", encode_parameter);
-    let mut source_map = HashMap::new();
-    for (media_type, graph) in graph_map.iter() {
-        source_map.insert(media_type.clone(), graph as &dyn KPEncodeSourceRely);
+    // create graph
+    let mut graph_map = HashMap::new();
+    for (media_type, _) in expect_streams.iter() {
+        let mut graph = KPGraph::new(media_type);
+        graph.injection_source(&decode).unwrap();
+        if media_type.eq(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO) {
+            {
+                let mut argument = HashMap::new();
+                argument.insert("w".to_string(), "848".to_string());
+                argument.insert("h".to_string(), "480".to_string());
+                let filter = KPFilter::new("scale", argument).unwrap();
+                graph.add_filter(vec![filter]).unwrap();
+            }
+            {
+                let mut argument = HashMap::new();
+                argument.insert("pix_fmts".to_string(), KPAVPixelFormat::from(AV_PIX_FMT_YUV420P).to_string());
+                let filter = KPFilter::new("format", argument).unwrap();
+                graph.add_filter(vec![filter]).unwrap();
+            }
+            {
+                let mut argument = HashMap::new();
+                argument.insert("fps".to_string(), 29.to_string());
+                let filter = KPFilter::new("fps", argument).unwrap();
+                graph.add_filter(vec![filter]).unwrap();
+            }
+            {
+                let mut argument = HashMap::new();
+                argument.insert("PTS-STARTPTS".to_string(), "".to_string());
+                let filter = KPFilter::new("setpts", argument).unwrap();
+                graph.add_filter(vec![filter]).unwrap();
+            }
+        } else if media_type.eq(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO) {
+            {
+                let mut argument = HashMap::new();
+                argument.insert("sample_fmts".to_string(), KPAVSampleFormat::from(AV_SAMPLE_FMT_FLTP).to_string());
+                let filter = KPFilter::new("aformat", argument).unwrap();
+                graph.add_filter(vec![filter]).unwrap();
+            }
+            {
+                let mut argument = HashMap::new();
+                argument.insert("ocl".to_string(), 3.to_string());
+                argument.insert("och".to_string(), 2.to_string());
+                let filter = KPFilter::new("aresample", argument).unwrap();
+                graph.add_filter(vec![filter]).unwrap();
+            }
+            {
+                let mut argument = HashMap::new();
+                argument.insert("r".to_string(), 48000.to_string());
+                let filter = KPFilter::new("asetrate", argument).unwrap();
+                graph.add_filter(vec![filter]).unwrap();
+            }
+            {
+                let mut argument = HashMap::new();
+                argument.insert("PTS-STARTPTS".to_string(), "".to_string());
+                let filter = KPFilter::new("asetpts", argument).unwrap();
+                graph.add_filter(vec![filter]).unwrap();
+            }
+        }
+        graph.injection_sink().unwrap();
+        graph_map.insert(media_type.clone(), graph);
     }
+
+    let mut encode = KPEncode::new("flv", encode_parameter);
     encode.redirect_path("/tmp/main.flv");
-    encode.open(source_map).unwrap();
+    encode.open().unwrap();
     encode.write_header().unwrap();
 
     // set frame size
@@ -454,11 +513,11 @@ fn test_encode() {
             let get_filter_frame = filter_frame.unwrap();
             info!("filter frame. pts: {}", get_filter_frame.get().pts);
 
-            encode.stream_to_encode(get_filter_frame, media_type).unwrap();
+            encode.stream_to_encode(get_filter_frame, &media_type).unwrap();
 
             // send to encode
             while let Some(packet) = encode.iter().next() {
-                encode.write(&packet.unwrap()).unwrap()
+                encode.write(&packet).unwrap()
             }
         }
     }
@@ -468,9 +527,23 @@ fn test_encode() {
         for filter_frame in graph.iter() {
             let get_filter_frame = filter_frame.unwrap();
             info!("filter frame. pts: {}", get_filter_frame.get().pts);
+
+            encode.stream_to_encode(get_filter_frame, media_type).unwrap();
+
+            // send to encode
+            while let Some(packet) = encode.iter().next() {
+                encode.write(&packet).unwrap()
+            }
         }
-        info!("graph flushed. media_type: {}", media_type);
     }
+
+    encode.flush().unwrap();
+    // send to encode
+    while let Some(packet) = encode.iter().next() {
+        encode.write(&packet).unwrap()
+    }
+
+    encode.write_trailer().unwrap();
 
     assert_eq!(decode.get_status(), &KPCodecStatus::Ended);
     for (_, graph) in graph_map.iter() {

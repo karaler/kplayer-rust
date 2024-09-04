@@ -6,6 +6,6 @@ pub enum KPCodecStatus {
     Opened,
     Started,
     Paused,
-    Ended,
     Stopped,
+    Ended,
 }

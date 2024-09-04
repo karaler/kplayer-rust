@@ -1,3 +1,4 @@
+use log::error;
 use crate::filter::*;
 
 #[derive(Default, Clone)]
@@ -45,13 +46,15 @@ impl KPFilter {
         &self.filter_name
     }
 
-    fn format_arguments(&self) -> String {
+    pub fn format_arguments(&self) -> String {
         let mut arg = String::default();
         for (index, (first, second)) in self.arguments.iter().enumerate() {
             if index != 0 {
                 arg += ":";
             }
             if first.is_empty() {
+                arg += &second.clone().replace(":", r"\:");
+            }else if second.is_empty(){
                 arg += &first.clone().replace(":", r"\:");
             } else {
                 let str = format!("{}={}", &first.clone().replace(":", r"\:"), &second.clone().replace(":", r"\:")).to_string();
