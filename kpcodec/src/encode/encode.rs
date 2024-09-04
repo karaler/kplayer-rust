@@ -148,11 +148,10 @@ impl KPEncode {
             let codec_context = KPAVCodecContext::new(codec);
 
             assert!(!self.format_context_ptr.get().oformat.is_null());
-            let mut output_format = unsafe { *self.format_context_ptr.get().oformat };
-            if output_format.flags & AVFMT_GLOBALHEADER as c_int == 0 {
-                output_format.flags |= AVFMT_GLOBALHEADER as c_int;
+            if unsafe { *self.format_context_ptr.get().oformat }.flags & AVFMT_GLOBALHEADER as c_int != 0 {
+                codec_context.get().flags |= AV_CODEC_FLAG_GLOBAL_HEADER as c_int;
             }
-            assert_ne!(unsafe { *self.format_context_ptr.get().oformat }.flags & AVFMT_GLOBALHEADER as c_int, 0);
+            assert_ne!(codec_context.get().flags & AV_CODEC_FLAG_GLOBAL_HEADER as c_int, 0);
             Ok(codec_context)
         };
 
