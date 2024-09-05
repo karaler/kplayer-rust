@@ -27,7 +27,7 @@ impl<'a> Iterator for KPEncodeIterator<'a> {
         encode.stream_from_encode().unwrap();
 
         let lead_stream_index = encode.lead_stream_index;
-        if let Some((lead_pts, lead_dts)) = encode.maintainer {
+        if let Some((_, lead_dts)) = encode.maintainer {
             if encode.streams.values().any(|v| !v.end_of_file && v.packets.len() == 0) { return None; }
             // get packet from queue
             for (follow_stream_index, follow_stream_context) in encode.streams.iter_mut() {
@@ -39,6 +39,7 @@ impl<'a> Iterator for KPEncodeIterator<'a> {
                         follow_stream_context.packets.push_front(pkt);
                         continue;
                     } else {
+                        trace!("iterator packet. packet: {}", pkt);
                         return Some(pkt);
                     }
                 } else {
@@ -52,6 +53,7 @@ impl<'a> Iterator for KPEncodeIterator<'a> {
             None => None,
             Some(pkt) => {
                 encode.maintainer = Some((pkt.get().pts, pkt.get().dts));
+                trace!("iterator packet. packet: {}", pkt);
                 Some(pkt)
             }
         }
@@ -333,10 +335,6 @@ impl KPEncode {
 
                         // push packet
                         assert!(packet.is_valid());
-                        if packet.get().pts < 0 {
-                            packet.get().pts = 0;
-                            packet.get().dts = 0;
-                        }
                         stream_context.packets.push_back(packet);
                     }
                     r if r == AVERROR(EAGAIN) => {
@@ -460,6 +458,7 @@ fn test_encode() {
                 let mut argument = HashMap::new();
                 argument.insert("ocl".to_string(), 3.to_string());
                 argument.insert("och".to_string(), 2.to_string());
+                argument.insert("out_sample_rate".to_string(), 48000.to_string());
                 let filter = KPFilter::new("aresample", argument).unwrap();
                 graph.add_filter(vec![filter]).unwrap();
             }
