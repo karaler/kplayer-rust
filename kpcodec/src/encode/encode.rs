@@ -27,24 +27,15 @@ impl<'a> Iterator for KPEncodeIterator<'a> {
         encode.stream_from_encode().unwrap();
 
         let lead_stream_index = encode.lead_stream_index;
-        if encode.maintainer.is_none() {
-            match encode.streams.get_mut(&lead_stream_index).and_then(|ctx| ctx.packets.pop_front()) {
-                None => return None,
-                Some(pkt) => {
-                    encode.maintainer = Some((pkt.get().pts as usize, pkt.get().dts as usize));
-                    return Some(pkt);
-                }
-            };
-        };
-
-        // get packet from queue
-        for (follow_stream_index, follow_stream_context) in encode.streams.iter_mut() {
-            if lead_stream_index.eq(follow_stream_index) { continue; }
-            if let Some((lead_pts, _)) = encode.maintainer {
+        if let Some((lead_pts, lead_dts)) = encode.maintainer {
+            if encode.streams.values().any(|v| !v.end_of_file && v.packets.len() == 0) { return None; }
+            // get packet from queue
+            for (follow_stream_index, follow_stream_context) in encode.streams.iter_mut() {
+                if lead_stream_index.eq(follow_stream_index) { continue; }
                 let follow_packet = follow_stream_context.packets.pop_front();
                 if let Some(pkt) = follow_packet {
-                    if pkt.get().pts as usize > lead_pts {
-                        trace!("renew packet to queue. stream_index: {}, pts: {}, dts: {}", follow_stream_index, pkt.get().pts, pkt.get().dts);
+                    if pkt.get().dts > lead_dts {
+                        trace!("renew packet to queue. stream_index: {}, packet: {}", follow_stream_index, pkt);
                         follow_stream_context.packets.push_front(pkt);
                         continue;
                     } else {
@@ -53,14 +44,14 @@ impl<'a> Iterator for KPEncodeIterator<'a> {
                 } else {
                     if !follow_stream_context.end_of_file { return None; }
                 }
-            }
+            };
         };
 
         // send lead
         match encode.streams.get_mut(&lead_stream_index).and_then(|ctx| ctx.packets.pop_front()) {
             None => None,
             Some(pkt) => {
-                encode.maintainer = Some((pkt.get().pts as usize, pkt.get().dts as usize));
+                encode.maintainer = Some((pkt.get().pts, pkt.get().dts));
                 Some(pkt)
             }
         }
@@ -84,7 +75,7 @@ pub struct KPEncode {
     // state
     lead_stream_index: usize,
     status: KPCodecStatus,
-    maintainer: Option<(usize, usize)>,
+    maintainer: Option<(i64, i64)>,
     position: Duration,
 }
 
@@ -342,9 +333,11 @@ impl KPEncode {
 
                         // push packet
                         assert!(packet.is_valid());
-                        if packet.get().pts >= 0 && packet.get().dts >= 0 {
-                            stream_context.packets.push_back(packet);
+                        if packet.get().pts < 0 {
+                            packet.get().pts = 0;
+                            packet.get().dts = 0;
                         }
+                        stream_context.packets.push_back(packet);
                     }
                     r if r == AVERROR(EAGAIN) => {
                         break;
