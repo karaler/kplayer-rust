@@ -1,0 +1,3 @@
+[submodule "kpserver/third-parts/harlanc/xiu"]
+	path = kpserver/third-parts/harlanc/xiu
+	url = https://github.com/harlanc/xiu.git
