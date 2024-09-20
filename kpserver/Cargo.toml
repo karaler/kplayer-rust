@@ -16,3 +16,4 @@ streamhub = { path = "third-parts/harlanc/xiu/library/streamhub" }
 rtmp = { path = "third-parts/harlanc/xiu/protocol/rtmp" }
 httpflv = { path = "third-parts/harlanc/xiu/protocol/httpflv" }
 hls = { path = "third-parts/harlanc/xiu/protocol/hls" }
+url = "2.5.2"

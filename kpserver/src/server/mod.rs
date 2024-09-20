@@ -7,11 +7,10 @@ use streamhub::notify::Notifier;
 use streamhub::StreamsHub;
 use crate::notify::log_notifier::KPLogNotifier;
 use crate::util::config::KPConfig;
-use crate::server::status::KPServerMessage;
+use crate::util::status::KPServerMessage;
 use crate::util::service::KPService;
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use std::net::IpAddr;
 use std::str::FromStr;
 
-mod server;
-mod status;
+pub mod server;
