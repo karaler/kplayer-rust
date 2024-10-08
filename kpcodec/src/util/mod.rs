@@ -11,6 +11,6 @@ use std::ffi::c_int;
 use std::ptr;
 use crate::{averror, cstr, cstring};
 
-pub(crate) mod alias;
+pub mod alias;
 pub(crate) mod codec_status;
 pub mod encode_parameter;

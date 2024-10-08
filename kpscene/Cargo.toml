@@ -1,0 +1,17 @@
+[package]
+name = "kpscene"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.87"
+env_logger = "0.11.5"
+log = "0.4.22"
+tokio = "1.40.0"
+dotenv = "0.15.0"
+async-trait = "0.1.82"
+strum = "0.26.3"
+strum_macros = "0.26.4"
+wasmtime = { version = "25.0.1", features = ["async"] }
+wasmtime-wasi = "25.0.1"
+kpcodec = { path = "../kpcodec" }

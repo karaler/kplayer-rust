@@ -3,6 +3,6 @@ resolver = "2"
 members = [
     "kpcodec",
     "kpserver",
-    "kpplugin",
+    "kpscene",
     "kpapp",
 ]
