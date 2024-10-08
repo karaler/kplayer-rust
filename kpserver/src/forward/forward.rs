@@ -21,30 +21,31 @@ impl KPForward {
                 KPConfig::rtmp_pull { name, source_url, app_name, stream_name, keep_alive, timeout, retry_interval } => {
                     let target_app_name = app_name;
                     let target_stream_name = stream_name;
-                    if !keep_alive {
-                        loop {
-                            let stream_hub = self.service.stream_hub.clone();
-                            let event = stream_hub.lock().await.get_client_event_consumer().recv().await?;
-                            if let BroadcastEvent::Subscribe {
-                                identifier: StreamIdentifier::Rtmp { app_name, stream_name, }, ..
-                            } = event {
-                                let (source_address, source_app_name, source_stream_name) = KPForward::get_source_url_info(&source_url)?;
-                                debug!("receive pull event. app_name: {}, stream_name: {}", app_name, stream_name);
+                    let producer = self.service.stream_hub.lock().await.get_hub_event_sender();
+                    let mut event_consumer = self.service.stream_hub.lock().await.get_client_event_consumer();
 
-                                if source_app_name == app_name && source_stream_name == stream_name {
-                                    info!("receive pull event, will open source url. source_url: {}, app_name: {}, stream_name: {}", source_address, app_name, stream_name);
-                                    break;
+                    tokio::spawn(async move {
+                        if !keep_alive {
+                            loop {
+                                let event = event_consumer.recv().await.unwrap();
+                                if let BroadcastEvent::Subscribe {
+                                    identifier: StreamIdentifier::Rtmp { app_name, stream_name, }, ..
+                                } = event {
+                                    let (source_address, source_app_name, source_stream_name) = KPForward::get_source_url_info(&source_url).unwrap();
+                                    debug!("receive pull event. app_name: {}, stream_name: {}", app_name, stream_name);
+
+                                    if source_app_name == app_name && source_stream_name == stream_name {
+                                        info!("receive pull event, will open source url. source_url: {}, app_name: {}, stream_name: {}", source_address, app_name, stream_name);
+                                        break;
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    // connect pull from source
-                    let producer = self.service.stream_hub.lock().await.get_hub_event_sender();
-                    tokio::spawn(async move {
                         let mut retry_c = 1usize;
                         loop {
                             let producer = producer.clone();
+                            // connect pull from source
                             if let Err(err) = KPForward::create_pull(producer, &source_url, target_app_name.clone(), target_stream_name.clone(), timeout).await {
                                 error!("rtmp pull failed. source_url: {}, error: {}", source_url, err);
                             }
@@ -56,6 +57,8 @@ impl KPForward {
                             } else { break; }
                         }
                     });
+
+                    self.service.stream_hub.lock().await.set_rtmp_pull_enabled(true);
                 }
                 _ => {}
             }
@@ -78,7 +81,7 @@ impl KPForward {
             producer.clone(),
             0,
         );
-        client_session.subscribe(app_name.unwrap_or(source_app_name), stream_name.unwrap_or(source_stream_name));
+        client_session.set_publish(app_name.unwrap_or(source_app_name), stream_name.unwrap_or(source_stream_name));
 
         // set timeout
         if let Some(t) = timeout {
@@ -131,9 +134,8 @@ async fn test_forward() {
         name: "test".to_string(),
         source_url: env::var("SOURCE_URL").unwrap().to_string(),
         app_name: Some("live".to_string()),
-        // @TODO Custom rtmp_pull
-        stream_name: Some("rtmp_pull".to_string()),
-        keep_alive: true,
+        stream_name: Some("test".to_string()),
+        keep_alive: false,
         timeout: Some(Duration::from_secs(2)),
         retry_interval: Some(Duration::from_secs(5)),
     });
