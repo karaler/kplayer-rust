@@ -58,11 +58,15 @@ impl KPEngine {
 
     async fn read_memory_as_string(&self, ptr: i32, size: usize) -> Result<String> {
         let buf = self.read_memory(ptr, size).await?;
-        if let Ok(str) = std::str::from_utf8(&buf) {
+        let result = if let Ok(str) = std::str::from_utf8(&buf) {
             Ok(str.to_string())
         } else {
             Err(anyhow!("data is not valid UTF-8"))
-        }
+        };
+
+        // destroy memory
+        self.deallocate(ptr, size).await?;
+        result
     }
 
     async fn allocate_memory<F>(&self, bytes: &Vec<u8>, f: F) -> Result<i32> where
