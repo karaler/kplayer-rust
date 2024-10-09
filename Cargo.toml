@@ -4,5 +4,5 @@ members = [
     "kpcodec",
     "kpserver",
     "kpscene",
-    "kpapp",
+    "kpapp", "examples/plugin/memory_wasm",
 ]
