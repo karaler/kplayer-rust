@@ -1,10 +1,3 @@
-use std::{env, fs};
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
-use tokio::sync::MutexGuard;
-use wasmtime_wasi::preview1::WasiP1Ctx;
-use crate::init::initialize;
 use crate::scene::engine::*;
 
 // basic
@@ -53,6 +46,25 @@ impl KPEngine {
         Ok(())
     }
 
+    async fn read_memory(&self, ptr: i32, size: usize) -> Result<Vec<u8>> {
+        let mut store_locker = self.store.lock().await;
+        let mut store = store_locker.deref_mut();
+        let memory = self.memory.lock().await;
+
+        let mut buffer = vec![0; size];
+        memory.read(&mut store, ptr as usize, &mut buffer)?;
+        Ok(buffer)
+    }
+
+    async fn read_memory_as_string(&self, ptr: i32, size: usize) -> Result<String> {
+        let buf = self.read_memory(ptr, size).await?;
+        if let Ok(str) = std::str::from_utf8(&buf) {
+            Ok(str.to_string())
+        } else {
+            Err(anyhow!("data is not valid UTF-8"))
+        }
+    }
+
     async fn allocate_memory<F>(&self, bytes: &Vec<u8>, f: F) -> Result<i32> where
         F: Fn(Arc<Mutex<Store<WasiP1Ctx>>>, Arc<Mutex<Instance>>, i32, usize) -> Pin<Box<dyn Future<Output=Result<()>>>>,
     {
@@ -70,7 +82,7 @@ impl KPEngine {
 }
 
 #[tokio::test]
-async fn test_memory() -> Result<()> {
+async fn test_memory_write() -> Result<()> {
     initialize();
     let memory_wasm_path = env::var("MEMORY_WASM_PATH").unwrap();
     let file_data = fs::read(memory_wasm_path)?;
@@ -88,5 +100,27 @@ async fn test_memory() -> Result<()> {
             Ok(())
         })
     }).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_memory_read() -> Result<()> {
+    initialize();
+    let memory_wasm_path = env::var("MEMORY_WASM_PATH").unwrap();
+    let file_data = fs::read(memory_wasm_path)?;
+
+    let engine = KPEngine::new(file_data).await?;
+    let (ptr, size) = {
+        let mut store_locker = engine.store.lock().await;
+        let mut store = store_locker.deref_mut();
+        let instance = engine.instance.lock().await;
+
+        let func = instance.get_typed_func::<(), u64>(&mut store, "get_string")?;
+        let memory_p = func.call_async(&mut store, ()).await?;
+        memory_split!(memory_p)
+    };
+
+    let str = engine.read_memory_as_string(ptr, size as usize).await?;
+    info!("Read string: {}", str);
     Ok(())
 }
