@@ -1,5 +1,5 @@
 pub enum KPEngineStatus {
     None,
-    Opened,
+    Initialized,
     Loaded,
 }

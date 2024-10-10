@@ -3,7 +3,6 @@ use kpcodec::util::alias::KPAVMediaType;
 use crate::scene::engine::version::KPEngineVersion;
 use tokio::sync::{Mutex};
 use wasmtime::{Instance, Linker, Store};
-use wasmtime_wasi::WasiCtx;
 use kpcodec::filter::filter::KPFilter;
 use crate::scene::engine::vars::KPEngineStatus;
 use anyhow::Result;
@@ -15,7 +14,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use log::info;
-use tokio::sync::MutexGuard;
 use wasmtime_wasi::preview1::WasiP1Ctx;
 use crate::init::initialize;
 use crate::memory_split;
@@ -25,6 +23,8 @@ mod version;
 mod vars;
 mod caller;
 mod inject;
+
+pub(crate) type MemoryPoint = u64;
 
 #[macro_export]
 macro_rules! memory_combine {
@@ -39,7 +39,7 @@ macro_rules! memory_split {
         {
             let ptr = ($value >> 32) as i32;
             let size = ($value & 0xFFFFFFFF) as u32;
-            (ptr, size)
+            (ptr as *mut u8, size as usize)
         }
     };
 }

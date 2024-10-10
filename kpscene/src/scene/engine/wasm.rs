@@ -9,16 +9,16 @@ const DEFAULT_MODULE: &str = "";
 const DEFAULT_MEMORY: &str = "memory";
 
 pub struct KPEngine {
-    bytecode: Vec<u8>,
-    app: String,
-    author: String,
-    media_type: KPAVMediaType,
-    arguments: HashMap<String, String>,
-    version: KPEngineVersion,
-    status: KPEngineStatus,
+    pub(crate) bytecode: Vec<u8>,
+    pub(crate) app: String,
+    pub(crate) author: String,
+    pub(crate) media_type: KPAVMediaType,
+    pub(crate) arguments: HashMap<String, String>,
+    pub(crate) version: KPEngineVersion,
+    pub(crate) status: KPEngineStatus,
 
     // state
-    groups: Vec<Vec<KPFilter>>,
+    pub(crate) groups: Vec<Vec<KPFilter>>,
 
     // context
     pub(crate) engine: Arc<Mutex<Engine>>,
@@ -45,10 +45,7 @@ impl KPEngine {
         let instance = linker.instantiate_async(&mut store, &module).await?;
         let memory = instance.get_memory(&mut store, DEFAULT_MEMORY).ok_or_else(|| anyhow!("memory not found. memory: {}", DEFAULT_MEMORY))?;
 
-        // get information
-        // @TODO
-
-        let engine = KPEngine {
+        let mut engine = KPEngine {
             bytecode,
             app: "".to_string(),
             author: "".to_string(),
@@ -64,6 +61,15 @@ impl KPEngine {
             memory: Arc::new(Mutex::new(memory)),
             instance: Arc::new(Mutex::new(instance)),
         };
+
+        // init
+        engine.init().await?;
+        engine.status = KPEngineStatus::Initialized;
+
+        // set basic information
+        let app = engine.get_app().await?;
+        engine.app = app;
+
         Ok(engine)
     }
 }
