@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::plugin_item::KPPluginItem;
 use crate::vars::KPPluginMediaType;
 
@@ -6,22 +7,24 @@ pub static mut INSTANCE_PTR: *mut KPPlugin = 0x0 as *mut KPPlugin;
 pub struct KPPlugin {
     pub app: String,
     pub author: String,
+    pub version: String,
     pub media_type: KPPluginMediaType,
     pub items: Vec<Vec<Box<dyn KPPluginItem>>>,
 }
 
 impl KPPlugin {
-    pub fn init<T: ToString>(app: T, author: T, media_type: KPPluginMediaType) {
+    pub fn init<T: ToString>(app: T, author: T, version: T, media_type: KPPluginMediaType, items: Vec<Vec<Box<dyn KPPluginItem>>>) {
         unsafe {
             assert_eq!(INSTANCE_PTR, 0x0 as *mut KPPlugin);
             let plugin = Box::new(KPPlugin {
                 app: app.to_string(),
                 author: author.to_string(),
+                version: version.to_string(),
                 media_type,
-                items: vec![],
+                items,
             });
             let ptr: &'static mut KPPlugin = Box::leak(plugin);
-            INSTANCE_PTR = ptr as *mut KPPlugin;
+            INSTANCE_PTR = ptr as *mut KPPlugin
         }
     }
 

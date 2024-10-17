@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use derivative::Derivative;
 use wasmtime::{Config, Engine, Memory};
 use wasmtime::Module;
 use wasmtime_wasi::preview1::WasiP1Ctx;
@@ -8,24 +9,34 @@ use crate::scene::engine::*;
 const DEFAULT_MODULE: &str = "";
 const DEFAULT_MEMORY: &str = "memory";
 
+#[derive(Derivative)]
+#[derivative(Debug)]
 pub struct KPEngine {
+    #[derivative(Debug = "ignore")]
     pub(crate) bytecode: Vec<u8>,
-    pub(crate) app: String,
-    pub(crate) author: String,
-    pub(crate) media_type: KPAVMediaType,
-    pub(crate) arguments: HashMap<String, String>,
-    pub(crate) version: KPEngineVersion,
-    pub(crate) status: KPEngineStatus,
+    pub app: String,
+    pub author: String,
+    pub media_type: KPAVMediaType,
+    pub default_arguments: BTreeMap<String, String>,
+    pub allow_arguments: Vec<String>,
+    pub version: KPEngineVersion,
+    pub status: KPEngineStatus,
 
     // state
-    pub(crate) groups: Vec<Vec<KPFilter>>,
+    pub groups: Vec<Vec<KPFilter>>,
 
     // context
+    #[derivative(Debug = "ignore")]
     pub(crate) engine: Arc<Mutex<Engine>>,
+    #[derivative(Debug = "ignore")]
     pub(crate) module: Arc<Mutex<Module>>,
+    #[derivative(Debug = "ignore")]
     pub(crate) store: Arc<Mutex<Store<WasiP1Ctx>>>,
+    #[derivative(Debug = "ignore")]
     pub(crate) linker: Arc<Mutex<Linker<WasiP1Ctx>>>,
+    #[derivative(Debug = "ignore")]
     pub(crate) memory: Arc<Mutex<Memory>>,
+    #[derivative(Debug = "ignore")]
     pub(crate) instance: Arc<Mutex<Instance>>,
 }
 
@@ -50,8 +61,9 @@ impl KPEngine {
             app: "".to_string(),
             author: "".to_string(),
             media_type: Default::default(),
-            arguments: Default::default(),
-            version: KPEngineVersion {},
+            default_arguments: Default::default(),
+            allow_arguments: Default::default(),
+            version: Default::default(),
             status: KPEngineStatus::None,
             groups: vec![],
             engine: Arc::new(Mutex::new(engine)),
@@ -67,9 +79,26 @@ impl KPEngine {
         engine.status = KPEngineStatus::Initialized;
 
         // set basic information
-        let app = engine.get_app().await?;
-        engine.app = app;
+        engine.app = engine.get_app().await?;
+        engine.author = engine.get_author().await?;
+        engine.media_type = engine.get_media_type().await?;
+        engine.version = KPEngineVersion::from(engine.get_version().await?)?;
+        let (groups, default_arguments, allow_arguments) = engine.get_groups().await?;
+        engine.allow_arguments = allow_arguments;
+        engine.default_arguments = default_arguments;
+        engine.groups = groups;
 
         Ok(engine)
     }
+}
+
+#[tokio::test]
+async fn test_plugin() -> Result<()> {
+    initialize();
+    let wasm_path = env::var("TEXT_WASM_PATH").unwrap();
+    let file_data = fs::read(wasm_path)?;
+
+    let engine = KPEngine::new(file_data).await?;
+    info!("plugin: {:?}", engine);
+    Ok(())
 }

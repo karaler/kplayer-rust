@@ -17,6 +17,8 @@ use log::info;
 use wasmtime_wasi::preview1::WasiP1Ctx;
 use crate::init::initialize;
 use crate::memory_split;
+use std::collections::BTreeMap;
+use serde::{Deserialize, Serialize};
 
 mod wasm;
 mod version;

@@ -3,6 +3,7 @@ use kplayer_plugin_sdk::plugin::KPPlugin;
 use kplayer_plugin_sdk::plugin_item::KPPluginItem;
 use kplayer_plugin_sdk::vars::KPPluginMediaType;
 
+#[derive(Default)]
 pub struct KPPluginText {}
 
 impl KPPluginItem for KPPluginText {
@@ -42,5 +43,9 @@ impl KPPluginItem for KPPluginText {
 
 #[no_mangle]
 pub extern "C" fn init() {
-    KPPlugin::init("text", "kplayer", KPPluginMediaType::AVMEDIA_TYPE_VIDEO);
+    KPPlugin::init("text", "kplayer", "1.0.0", KPPluginMediaType::AVMEDIA_TYPE_VIDEO, vec![
+        vec![
+            Box::new(KPPluginText::default())
+        ]
+    ], );
 }

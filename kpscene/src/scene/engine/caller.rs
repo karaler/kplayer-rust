@@ -1,4 +1,5 @@
 use crate::scene::engine::*;
+use crate::scene::engine::vars::KPPluginInfo;
 
 // lifecycle
 impl KPEngine {
@@ -18,6 +19,8 @@ impl KPEngine {
 // information
 impl KPEngine {
     pub(crate) async fn get_app(&self) -> Result<String> {
+        assert_eq!(self.status, KPEngineStatus::Initialized);
+
         let memory_p = {
             let mut store_locker = self.store.lock().await;
             let mut store = store_locker.deref_mut();
@@ -32,6 +35,93 @@ impl KPEngine {
         // get string
         let app = self.read_memory_as_string(memory_p).await?;
         Ok(app)
+    }
+
+    pub(crate) async fn get_author(&self) -> Result<String> {
+        assert_eq!(self.status, KPEngineStatus::Initialized);
+        let memory_p = {
+            let mut store_locker = self.store.lock().await;
+            let mut store = store_locker.deref_mut();
+            let instance = self.instance.lock().await;
+
+            let func = instance.get_func(&mut store, "get_author")
+                .ok_or_else(|| anyhow!("function not found"))?
+                .typed::<(), (MemoryPoint)>(&store)?;
+            func.call_async(&mut store, ()).await?
+        };
+
+        // get string
+        let author = self.read_memory_as_string(memory_p).await?;
+        Ok(author)
+    }
+
+    pub(crate) async fn get_media_type(&self) -> Result<KPAVMediaType> {
+        assert_eq!(self.status, KPEngineStatus::Initialized);
+        let mut store_locker = self.store.lock().await;
+        let mut store = store_locker.deref_mut();
+        let instance = self.instance.lock().await;
+
+        let func = instance.get_func(&mut store, "get_media_type")
+            .ok_or_else(|| anyhow!("function not found"))?
+            .typed::<(), (i32)>(&store)?;
+        let media_type = func.call_async(&mut store, ()).await?;
+        Ok(KPAVMediaType::from_i32(media_type))
+    }
+
+    pub(crate) async fn get_version(&self) -> Result<String> {
+        assert_eq!(self.status, KPEngineStatus::Initialized);
+        let memory_p = {
+            let mut store_locker = self.store.lock().await;
+            let mut store = store_locker.deref_mut();
+            let instance = self.instance.lock().await;
+
+            let func = instance.get_func(&mut store, "get_version")
+                .ok_or_else(|| anyhow!("function not found"))?
+                .typed::<(), (MemoryPoint)>(&store)?;
+            func.call_async(&mut store, ()).await?
+        };
+
+        // get string
+        let version = self.read_memory_as_string(memory_p).await?;
+        Ok(version)
+    }
+
+    pub(crate) async fn get_groups(&self) -> Result<(Vec<Vec<KPFilter>>, BTreeMap<String, String>, Vec<String>)> {
+        assert_eq!(self.status, KPEngineStatus::Initialized);
+        let memory_p = {
+            let mut store_locker = self.store.lock().await;
+            let mut store = store_locker.deref_mut();
+            let instance = self.instance.lock().await;
+
+            let func = instance.get_func(&mut store, "get_groups")
+                .ok_or_else(|| anyhow!("function not found"))?
+                .typed::<(), (MemoryPoint)>(&store)?;
+            func.call_async(&mut store, ()).await?
+        };
+
+        // get string
+        let groups_str = self.read_memory_as_string(memory_p).await?;
+        let groups: Vec<Vec<KPPluginInfo>> = serde_json::from_str(&groups_str)?;
+
+        let mut items: Vec<Vec<KPFilter>> = Vec::new();
+        let mut default_arguments = BTreeMap::new();
+        let mut allow_arguments = Vec::new();
+
+        for group in groups {
+            let mut filter_item = Vec::new();
+            for group_item in group {
+                // filter
+                let filter = KPFilter::new(group_item.filter_name, group_item.default_arguments.clone(), group_item.allow_arguments.clone())?;
+                filter_item.push(filter);
+
+                // default_arguments
+                default_arguments.extend(group_item.default_arguments);
+                allow_arguments.extend(group_item.allow_arguments);
+            }
+            items.push(filter_item);
+        }
+
+        Ok((items, default_arguments, allow_arguments))
     }
 }
 
@@ -91,7 +181,8 @@ impl KPEngine {
         result
     }
 
-    async fn allocate_memory<F>(&self, bytes: &Vec<u8>, f: F) -> Result<()> where
+    async fn allocate_memory<F>(&self, bytes: &Vec<u8>, f: F) -> Result<()>
+    where
         F: Fn(Arc<Mutex<Store<WasiP1Ctx>>>, Arc<Mutex<Instance>>, MemoryPoint) -> Pin<Box<dyn Future<Output=Result<()>>>>,
     {
         let memory_p = self.allocate(bytes.len()).await?;

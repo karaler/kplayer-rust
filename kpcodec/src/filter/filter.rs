@@ -1,15 +1,29 @@
+use std::collections::BTreeMap;
 use log::error;
+use serde::{Deserialize, Serialize};
 use crate::filter::*;
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Serialize, Deserialize)]
 pub struct KPFilter {
     filter_name: String,
-    arguments: HashMap<String, String>,
+    arguments: BTreeMap<String, String>,
+    allow_arguments: Vec<String>,
+    #[serde(skip)]
     filter: KPAVFilter,
 }
 
+impl std::fmt::Debug for KPFilter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KPFilter")
+            .field("filter_name", &self.filter_name)
+            .field("arguments", &self.arguments)
+            .field("allow_arguments", &self.allow_arguments)
+            .finish_non_exhaustive()
+    }
+}
+
 impl KPFilter {
-    pub fn new<T: ToString>(filter_name_t: T, arguments: HashMap<String, String>) -> Result<Self> {
+    pub fn new<T: ToString>(filter_name_t: T, arguments: BTreeMap<String, String>, allow_arguments: Vec<String>) -> Result<Self> {
         let filter_name = filter_name_t.to_string();
         let filter = unsafe { avfilter_get_by_name(cstring!(filter_name).as_ptr()) };
         if filter.is_null() {
@@ -18,6 +32,7 @@ impl KPFilter {
         Ok(KPFilter {
             filter_name,
             arguments,
+            allow_arguments,
             filter: KPAVFilter::from(filter),
         })
     }
@@ -54,7 +69,7 @@ impl KPFilter {
             }
             if first.is_empty() {
                 arg += &second.clone().replace(":", r"\:");
-            }else if second.is_empty(){
+            } else if second.is_empty() {
                 arg += &first.clone().replace(":", r"\:");
             } else {
                 let str = format!("{}={}", &first.clone().replace(":", r"\:"), &second.clone().replace(":", r"\:")).to_string();

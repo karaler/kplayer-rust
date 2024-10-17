@@ -9,3 +9,7 @@ members = [
     "examples/plugin/text",
     "examples/plugin/kplayer-plugin-sdk",
 ]
+
+[profile.release]
+opt-level = 3
+lto = true

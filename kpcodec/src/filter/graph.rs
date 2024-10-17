@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use crate::decode::decode::KPDecode;
 use crate::filter::*;
 use crate::filter::graph_source::{KPGraphSourceAttribute, KPGraphSourceRely};
@@ -101,25 +102,25 @@ impl KPGraph {
         match source.get_source(&self.media_type)? {
             KPGraphSourceAttribute::Video { width, height, pix_fmt, time_base, pixel_aspect, frame_rate } => {
                 assert_eq!(self.media_type, KPAVMediaType::from(AVMEDIA_TYPE_VIDEO));
-                let mut arguments = HashMap::new();
+                let mut arguments = BTreeMap::new();
                 arguments.insert("width".to_string(), width.to_string());
                 arguments.insert("height".to_string(), height.to_string());
                 arguments.insert("pix_fmt".to_string(), pix_fmt.as_str()); // using as_str for source value
                 arguments.insert("time_base".to_string(), time_base.to_string());
                 arguments.insert("frame_rate".to_string(), frame_rate.to_string());
                 arguments.insert("pixel_aspect".to_string(), pixel_aspect.to_string());
-                let filter = KPFilter::new("buffer", arguments)?;
+                let filter = KPFilter::new("buffer", arguments, vec![])?;
                 self.add_filter(vec![filter])?;
             }
             KPGraphSourceAttribute::Audio { sample_rate, sample_fmt, channel_layout, channels, time_base } => {
                 assert_eq!(self.media_type, KPAVMediaType::from(AVMEDIA_TYPE_AUDIO));
-                let mut arguments = HashMap::new();
+                let mut arguments = BTreeMap::new();
                 arguments.insert("sample_rate".to_string(), sample_rate.to_string());
                 arguments.insert("sample_fmt".to_string(), sample_fmt.as_str()); // using as_str for source value
                 arguments.insert("channel_layout".to_string(), channel_layout.to_string());
                 arguments.insert("channels".to_string(), channels.to_string());
                 arguments.insert("time_base".to_string(), time_base.to_string());
-                let filter = KPFilter::new("abuffer", arguments)?;
+                let filter = KPFilter::new("abuffer", arguments, vec![])?;
                 self.add_filter(vec![filter])?;
             }
         }
@@ -133,11 +134,11 @@ impl KPGraph {
         assert!(!self.media_type.is_unknown());
         match self.media_type.clone() {
             r if r == KPAVMediaType::from(AVMEDIA_TYPE_VIDEO) => {
-                let filter = KPFilter::new("buffersink", HashMap::new())?;
+                let filter = KPFilter::new("buffersink", BTreeMap::new(), vec![])?;
                 self.add_filter(vec![filter])?;
             }
             r if r == KPAVMediaType::from(AVMEDIA_TYPE_AUDIO) => {
-                let filter = KPFilter::new("abuffersink", HashMap::new())?;
+                let filter = KPFilter::new("abuffersink", BTreeMap::new(), vec![])?;
                 self.add_filter(vec![filter])?;
             }
             _ => {}

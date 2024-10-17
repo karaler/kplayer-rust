@@ -142,6 +142,10 @@ impl KPAVMediaType {
         KPAVMediaType(media_type)
     }
 
+    pub fn from_i32(media_type: i32) -> Self {
+        KPAVMediaType(AVMEDIA_TYPE_VIDEO as i32)
+    }
+
     pub fn get(&self) -> AVMediaType {
         self.0
     }
