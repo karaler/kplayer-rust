@@ -20,11 +20,11 @@ use crate::memory_split;
 use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
-mod wasm;
-mod version;
-mod vars;
-mod caller;
-mod inject;
+pub(crate) mod wasm;
+pub(crate) mod version;
+pub(crate) mod vars;
+pub(crate) mod caller;
+pub(crate) mod inject;
 
 pub(crate) type MemoryPoint = u64;
 

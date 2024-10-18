@@ -18,3 +18,4 @@ kpcodec = { path = "../kpcodec" }
 serde_json = "1.0.128"
 serde = { version = "1.0.204", features = ["derive"] }
 derivative = "2.2.0"
+rusty_ffmpeg = { version = "0.16.1+ffmpeg.7.0", features = ["link_system_ffmpeg"] }

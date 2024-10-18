@@ -12,5 +12,5 @@ use std::ptr;
 use crate::{averror, cstr, cstring};
 
 pub mod alias;
-pub(crate) mod codec_status;
+pub mod codec_status;
 pub mod encode_parameter;

@@ -3,7 +3,7 @@ use dotenv::dotenv;
 
 static INIT: Once = Once::new();
 
-pub fn initialize() {
+pub(crate) fn initialize() {
     INIT.call_once(|| { dotenv().ok(); });
     let log_level = "rtmp=error,h264_decoder=error,xflv=error,tokio=info,wasmtime=error,cranelift_codegen=error,cranelift_wasm=error,trace";
     // let log_level = "trace";
