@@ -1,5 +1,6 @@
 use crate::scene::engine::*;
 use crate::scene::engine::vars::KPPluginInfo;
+use crate::scene::scene::KPSceneSortType;
 
 // lifecycle
 impl KPEngine {
@@ -67,6 +68,20 @@ impl KPEngine {
         let media_type = func.call_async(&mut store, ()).await?;
         Ok(KPAVMediaType::from_i32(media_type))
     }
+
+    pub(crate) async fn get_sort_type(&self) -> Result<KPSceneSortType> {
+        assert_eq!(self.status, KPEngineStatus::Initialized);
+        let mut store_locker = self.store.lock().await;
+        let mut store = store_locker.deref_mut();
+        let instance = self.instance.lock().await;
+
+        let func = instance.get_func(&mut store, "get_sort_type")
+            .ok_or_else(|| anyhow!("function not found"))?
+            .typed::<(), (i32)>(&store)?;
+        let sort_type = func.call_async(&mut store, ()).await?;
+        Ok(KPSceneSortType::from_i32(sort_type))
+    }
+
 
     pub(crate) async fn get_version(&self) -> Result<String> {
         assert_eq!(self.status, KPEngineStatus::Initialized);

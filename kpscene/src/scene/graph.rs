@@ -1,8 +1,5 @@
-use std::fs;
-use rusty_ffmpeg::ffi::{AV_SAMPLE_FMT_FLT, AV_SAMPLE_FMT_FLTP};
-use kpcodec::util::codec_status::KPCodecStatus;
 use crate::scene::*;
-use crate::scene::engine::wasm::KPEngine;
+use crate::scene::scene::KPSceneSortType;
 
 pub trait KPSceneGraph {
     fn add_scene(&mut self, scene: &KPScene) -> Result<()>;
@@ -53,6 +50,10 @@ async fn main() -> Result<()> {
     for (media_type, _) in expect_streams.iter() {
         let mut graph = KPGraph::new(media_type);
         graph.injection_source(&decode).unwrap();
+
+        if scene.media_type.eq(media_type) && scene.sort_type.eq(&KPSceneSortType::Before) {
+            graph.add_scene(&scene)?;
+        }
 
         if media_type.eq(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO) {
             {
@@ -109,7 +110,7 @@ async fn main() -> Result<()> {
             }
         }
 
-        if media_type == &scene.media_type {
+        if scene.media_type.eq(media_type) && scene.sort_type.eq(&KPSceneSortType::After) {
             graph.add_scene(&scene)?;
         }
 

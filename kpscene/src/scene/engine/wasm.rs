@@ -5,6 +5,7 @@ use wasmtime::Module;
 use wasmtime_wasi::preview1::WasiP1Ctx;
 use wasmtime_wasi::WasiCtxBuilder;
 use crate::scene::engine::*;
+use crate::scene::scene::KPSceneSortType;
 
 const DEFAULT_MODULE: &str = "";
 const DEFAULT_MEMORY: &str = "memory";
@@ -17,6 +18,7 @@ pub struct KPEngine {
     pub app: String,
     pub author: String,
     pub media_type: KPAVMediaType,
+    pub sort_type: KPSceneSortType,
     pub default_arguments: BTreeMap<String, String>,
     pub allow_arguments: Vec<String>,
     pub version: KPEngineVersion,
@@ -61,10 +63,11 @@ impl KPEngine {
             app: "".to_string(),
             author: "".to_string(),
             media_type: Default::default(),
+            sort_type: Default::default(),
             default_arguments: Default::default(),
-            allow_arguments: Default::default(),
+            allow_arguments: vec![],
             version: Default::default(),
-            status: KPEngineStatus::None,
+            status: Default::default(),
             groups: vec![],
             engine: Arc::new(Mutex::new(engine)),
             module: Arc::new(Mutex::new(module)),
@@ -83,6 +86,8 @@ impl KPEngine {
         engine.author = engine.get_author().await?;
         engine.media_type = engine.get_media_type().await?;
         engine.version = KPEngineVersion::from(engine.get_version().await?)?;
+        engine.sort_type = engine.get_sort_type().await?;
+
         let (groups, default_arguments, allow_arguments) = engine.get_groups().await?;
         engine.allow_arguments = allow_arguments;
         engine.default_arguments = default_arguments;

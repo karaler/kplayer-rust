@@ -7,6 +7,22 @@ pub enum KPPluginMediaType {
     AVMEDIA_TYPE_AUDIO,
 }
 
+#[derive(Default, Clone, Debug, PartialOrd, PartialEq)]
+pub enum KPSceneSortType {
+    #[default]
+    After,
+    Before,
+}
+
+impl KPSceneSortType {
+    pub fn to_i32(&self) -> i32 {
+        match self {
+            KPSceneSortType::After => 0,
+            KPSceneSortType::Before => 1,
+        }
+    }
+}
+
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct KPPluginInfo {
     pub filter_name: String,

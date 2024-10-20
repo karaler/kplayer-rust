@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use kplayer_plugin_sdk::plugin::KPPlugin;
 use kplayer_plugin_sdk::plugin_item::KPPluginItem;
-use kplayer_plugin_sdk::vars::KPPluginMediaType;
+use kplayer_plugin_sdk::vars::{KPPluginMediaType, KPSceneSortType};
 
 #[derive(Default)]
 pub struct KPPluginText {}
@@ -43,7 +43,7 @@ impl KPPluginItem for KPPluginText {
 
 #[no_mangle]
 pub extern "C" fn init() {
-    KPPlugin::init("text", "kplayer", "1.0.0", KPPluginMediaType::AVMEDIA_TYPE_VIDEO, vec![
+    KPPlugin::init("text", "kplayer", "1.0.0", KPPluginMediaType::AVMEDIA_TYPE_VIDEO, KPSceneSortType::After, vec![
         vec![
             Box::new(KPPluginText::default())
         ]

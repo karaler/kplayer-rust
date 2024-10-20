@@ -29,7 +29,13 @@ pub extern "C" fn get_author() -> MemoryPoint {
 #[no_mangle]
 pub extern "C" fn get_media_type() -> i32 {
     let plugin = KPPlugin::get();
-    plugin.media_type.clone() as i32
+    plugin.sort_type.to_i32()
+}
+
+#[no_mangle]
+pub extern "C" fn get_sort_type() -> i32 {
+    let plugin = KPPlugin::get();
+    plugin.sort_type.to_i32()
 }
 
 #[no_mangle]
