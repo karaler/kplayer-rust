@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use crate::plugin_item::KPPluginItem;
 use crate::vars::{KPPluginMediaType, KPSceneSortType};
+use simplelog::*;
 
 pub static mut INSTANCE_PTR: *mut KPPlugin = 0x0 as *mut KPPlugin;
 
@@ -14,7 +15,24 @@ pub struct KPPlugin {
 }
 
 impl KPPlugin {
-    pub fn init<T: ToString>(app: T, author: T, version: T, media_type: KPPluginMediaType, sort_type: KPSceneSortType, items: Vec<Vec<Box<dyn KPPluginItem>>>) {
+    pub fn init<T: ToString>(app: T, author: T, version: T, media_type: KPPluginMediaType, sort_type: KPSceneSortType, items: Vec<Vec<Box<dyn KPPluginItem>>>) -> Result<(), String> {
+        // validate items
+        let mut name_set = HashMap::new();
+        for group in &items {
+            for item in group {
+                let name = item.get_name();
+                if let Some(existing_group) = name_set.insert(name.clone(), group) {
+                    return Err(format!("duplicate name found: {}", name));
+                }
+            }
+        }
+
+        CombinedLogger::init(
+            vec![
+                TermLogger::new(LevelFilter::Warn, Config::default(), TerminalMode::Mixed, ColorChoice::Auto),
+            ]
+        ).unwrap();
+        // init
         unsafe {
             assert_eq!(INSTANCE_PTR, 0x0 as *mut KPPlugin);
             let plugin = Box::new(KPPlugin {
@@ -28,6 +46,7 @@ impl KPPlugin {
             let ptr: &'static mut KPPlugin = Box::leak(plugin);
             INSTANCE_PTR = ptr as *mut KPPlugin
         }
+        Ok(())
     }
 
     pub fn get() -> &'static mut KPPlugin {

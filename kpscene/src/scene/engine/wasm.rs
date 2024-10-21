@@ -92,6 +92,7 @@ impl KPEngine {
         engine.allow_arguments = allow_arguments;
         engine.default_arguments = default_arguments;
         engine.groups = groups;
+        engine.status = KPEngineStatus::Loaded;
 
         Ok(engine)
     }
@@ -100,10 +101,27 @@ impl KPEngine {
 #[tokio::test]
 async fn test_plugin() -> Result<()> {
     initialize();
-    let wasm_path = env::var("TEXT_WASM_PATH").unwrap();
+    let wasm_path = env::var("TEXT_WASM_PATH")?;
     let file_data = fs::read(wasm_path)?;
 
     let engine = KPEngine::new(file_data).await?;
     info!("plugin: {:?}", engine);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_plugin_update_command() -> Result<()> {
+    initialize();
+    let wasm_path = env::var("TEXT_WASM_PATH")?;
+    let file_data = fs::read(wasm_path)?;
+
+    let engine = KPEngine::new(file_data).await?;
+    info!("plugin: {:?}", engine);
+
+    // get update command
+    let mut update_arguments = BTreeMap::new();
+    update_arguments.insert("text".to_string(), "changed".to_string());
+    let command = engine.get_update_command(update_arguments).await?;
+    info!("command: {:?}", command);
     Ok(())
 }

@@ -1,11 +1,11 @@
 use crate::scene::*;
 use crate::scene::engine::wasm::KPEngine;
 
-#[derive(Default)]
 pub struct KPScene {
     pub media_type: KPAVMediaType,
     groups: Vec<Vec<KPFilter>>,
     pub sort_type: KPSceneSortType,
+    engine: KPEngine,
 }
 
 #[derive(Default, Clone, Debug, PartialOrd, PartialEq)]
@@ -26,15 +26,12 @@ impl KPSceneSortType {
 }
 
 impl KPScene {
-    pub fn new(media_type: KPAVMediaType, groups: Vec<Vec<KPFilter>>, sort_type: KPSceneSortType) -> Self {
-        KPScene { media_type, groups, sort_type }
-    }
-
-    pub fn from_engine(engine: &KPEngine) -> Self {
+    pub fn new(engine: KPEngine) -> Self {
         KPScene {
             media_type: engine.media_type.clone(),
             groups: engine.groups.clone(),
             sort_type: engine.sort_type.clone(),
+            engine,
         }
     }
 
@@ -44,5 +41,9 @@ impl KPScene {
 
     pub fn get_filters(&self) -> Vec<Vec<KPFilter>> {
         self.groups.clone()
+    }
+
+    pub async fn get_update_argument(&self, arguments: BTreeMap<String, String>) -> Result<BTreeMap<String, BTreeMap<String, String>>> {
+        self.engine.get_update_command(arguments).await
     }
 }

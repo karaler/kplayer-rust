@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-
 pub trait KPPluginItem {
     // The app name of the plugin, and this name needs to be unique within your namespace.
     // ex: text-1
@@ -29,5 +28,20 @@ pub trait KPPluginItem {
     // This is part of the lifecycle, where "destroy" typically represents a successfully destroy event.
     fn destroy(&mut self) -> Result<(), String> {
         Ok(())
+    }
+
+
+    /// Updates the plugin's internal commands based on the provided arguments.
+    ///
+    /// This function takes a reference to a `BTreeMap` of arguments, applies updates
+    /// to the plugin's internal state, and returns a new `BTreeMap` containing the updated commands.
+    ///
+    /// # Parameters
+    /// - `arguments`: A reference to a `BTreeMap` containing the key-value pairs of arguments.
+    ///
+    /// # Returns
+    /// A `BTreeMap` containing the updated commands.
+    fn update_commands(&mut self, arguments: &BTreeMap<String, String>) -> BTreeMap<String, String> {
+        BTreeMap::new()
     }
 }

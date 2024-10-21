@@ -3,7 +3,14 @@ name = "kplayer-plugin-sdk"
 version = "0.1.0"
 edition = "2021"
 
+[profile.release]
+opt-level = 3
+lto = true
+
 [dependencies]
 serde_json = "1.0.128"
 log = "0.4.22"
 serde = { version = "1.0.204", features = ["derive"] }
+anyhow = "1.0.90"
+chrono = "0.4.38"
+simplelog = "0.12.2"

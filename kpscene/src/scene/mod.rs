@@ -17,6 +17,7 @@ use std::fs;
 use rusty_ffmpeg::ffi::{AV_SAMPLE_FMT_FLTP};
 use kpcodec::util::codec_status::KPCodecStatus;
 use crate::scene::engine::wasm::KPEngine;
+use crate::scene::scene::KPSceneSortType;
 
 mod scene;
 mod graph;

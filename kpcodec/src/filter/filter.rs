@@ -5,6 +5,7 @@ use crate::filter::*;
 
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct KPFilter {
+    name: String,
     filter_name: String,
     arguments: BTreeMap<String, String>,
     allow_arguments: Vec<String>,
@@ -23,13 +24,15 @@ impl std::fmt::Debug for KPFilter {
 }
 
 impl KPFilter {
-    pub fn new<T: ToString>(filter_name_t: T, arguments: BTreeMap<String, String>, allow_arguments: Vec<String>) -> Result<Self> {
+    pub fn new<T: ToString>(name: T, filter_name_t: T, arguments: BTreeMap<String, String>, allow_arguments: Vec<String>) -> Result<Self> {
+        let name = name.to_string();
         let filter_name = filter_name_t.to_string();
         let filter = unsafe { avfilter_get_by_name(cstring!(filter_name).as_ptr()) };
         if filter.is_null() {
             return Err(anyhow!("find filter by name failed. name: {}", filter_name));
         }
         Ok(KPFilter {
+            name,
             filter_name,
             arguments,
             allow_arguments,
@@ -44,7 +47,7 @@ impl KPFilter {
             avfilter_graph_create_filter(
                 &mut filter_context,
                 self.filter.as_ptr(),
-                cstring!(self.filter_name.clone()).as_ptr(),
+                cstring!(self.name.clone()).as_ptr(),
                 cstring!(self.format_arguments()).as_ptr(),
                 ptr::null_mut(),
                 filter_graph.get())
@@ -58,6 +61,10 @@ impl KPFilter {
     }
 
     pub fn get_name(&self) -> &String {
+        &self.name
+    }
+
+    pub fn get_filter_name(&self) -> &String {
         &self.filter_name
     }
 

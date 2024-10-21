@@ -39,13 +39,30 @@ impl KPPluginItem for KPPluginText {
         let allow = vec!["text", "fontsize", "x", "y"];
         allow.iter().map(|item| { item.to_string() }).collect()
     }
+
+    fn update_commands(&mut self, arguments: &BTreeMap<String, String>) -> BTreeMap<String, String> {
+        let mut params = BTreeMap::new();
+        let allow_arguments = self.allow_arguments();
+        for (key, value) in arguments {
+            if allow_arguments.contains(key) {
+                params.insert(key.clone(), value.clone());
+            }
+        }
+
+        let mut cmd = BTreeMap::new();
+        cmd.insert("reinit".to_string(), params.iter().map(|(k, v)| format!("{}={}", k, v)).collect::<Vec<String>>().join(";"));
+        cmd
+    }
 }
 
 #[no_mangle]
-pub extern "C" fn init() {
-    KPPlugin::init("text", "kplayer", "1.0.0", KPPluginMediaType::AVMEDIA_TYPE_VIDEO, KPSceneSortType::After, vec![
+pub extern "C" fn init() -> i32 {
+    match KPPlugin::init("text", "kplayer", "1.0.0", KPPluginMediaType::AVMEDIA_TYPE_VIDEO, KPSceneSortType::After, vec![
         vec![
             Box::new(KPPluginText::default())
         ]
-    ], );
+    ], ) {
+        Ok(_) => 0,
+        Err(err) => -1,
+    }
 }

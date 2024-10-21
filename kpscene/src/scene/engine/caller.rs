@@ -1,3 +1,4 @@
+use log::debug;
 use crate::scene::engine::*;
 use crate::scene::engine::vars::KPPluginInfo;
 use crate::scene::scene::KPSceneSortType;
@@ -11,8 +12,11 @@ impl KPEngine {
 
         let func = instance.get_func(&mut store, "init")
             .ok_or_else(|| anyhow!("function not found"))?
-            .typed::<(), ()>(&store)?;
-        func.call_async(&mut store, ()).await?;
+            .typed::<(), (i32)>(&store)?;
+        let result = func.call_async(&mut store, ()).await?;
+        if result < 0 {
+            return Err(anyhow!("initialization function returned an error"));
+        }
         Ok(())
     }
 }
@@ -101,6 +105,36 @@ impl KPEngine {
         Ok(version)
     }
 
+
+    pub(crate) async fn get_update_command(&self, arguments: BTreeMap<String, String>) -> Result<BTreeMap<String, BTreeMap<String, String>>> {
+        assert_eq!(self.status, KPEngineStatus::Loaded);
+        // serialize `arguments` to a JSON string
+        let arguments_json = serde_json::to_string(&arguments)?;
+
+        // write the JSON string to memory
+        let memory_point = self.allocate(arguments_json.len()).await?;
+        self.write_memory(&memory_point, &arguments_json.into_bytes()).await?;
+
+        let memory_p = {
+            let mut store_locker = self.store.lock().await;
+            let mut store = store_locker.deref_mut();
+            let instance = self.instance.lock().await;
+
+            let func = instance.get_func(&mut store, "get_update_command")
+                .ok_or_else(|| anyhow!("function not found"))?
+                .typed::<(MemoryPoint), (MemoryPoint)>(&store)?;
+            func.call_async(&mut store, (memory_point)).await?
+        };
+
+        // get string
+        let update_command = self.read_memory_as_string(memory_p).await?;
+
+        // deserialize the JSON string to a BtreeMap<String, BTreeMap<String, String>>
+        let update_command: BTreeMap<String, BTreeMap<String, String>> = serde_json::from_str(&update_command)?;
+        debug!("update_command: {:?}", update_command);
+        Ok(update_command)
+    }
+
     pub(crate) async fn get_groups(&self) -> Result<(Vec<Vec<KPFilter>>, BTreeMap<String, String>, Vec<String>)> {
         assert_eq!(self.status, KPEngineStatus::Initialized);
         let memory_p = {
@@ -126,7 +160,7 @@ impl KPEngine {
             let mut filter_item = Vec::new();
             for group_item in group {
                 // filter
-                let filter = KPFilter::new(group_item.filter_name, group_item.default_arguments.clone(), group_item.allow_arguments.clone())?;
+                let filter = KPFilter::new(group_item.name, group_item.filter_name, group_item.default_arguments.clone(), group_item.allow_arguments.clone())?;
                 filter_item.push(filter);
 
                 // default_arguments

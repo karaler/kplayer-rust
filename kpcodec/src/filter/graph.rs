@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use crate::cstr;
 use crate::decode::decode::KPDecode;
 use crate::filter::*;
 use crate::filter::graph_source::{KPGraphSourceAttribute, KPGraphSourceRely};
@@ -56,7 +57,7 @@ impl KPGraphSourceRely for KPGraph {
         assert_eq!(&self.media_type, media_type);
 
         let sink_chain = self.filter_chain.last().unwrap().last().unwrap();
-        assert!(matches!(sink_chain.filter.get_name().as_str(), "buffersink" | "abuffersink"));
+        assert!(matches!(sink_chain.filter.get_filter_name().as_str(), "buffersink" | "abuffersink"));
         let param = match self.media_type {
             m if m.eq(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO) => {
                 KPGraphSourceAttribute::Video {
@@ -109,7 +110,7 @@ impl KPGraph {
                 arguments.insert("time_base".to_string(), time_base.to_string());
                 arguments.insert("frame_rate".to_string(), frame_rate.to_string());
                 arguments.insert("pixel_aspect".to_string(), pixel_aspect.to_string());
-                let filter = KPFilter::new("buffer", arguments, vec![])?;
+                let filter = KPFilter::new("buffer", "buffer", arguments, vec![])?;
                 self.add_filter(vec![filter])?;
             }
             KPGraphSourceAttribute::Audio { sample_rate, sample_fmt, channel_layout, channels, time_base } => {
@@ -120,7 +121,7 @@ impl KPGraph {
                 arguments.insert("channel_layout".to_string(), channel_layout.to_string());
                 arguments.insert("channels".to_string(), channels.to_string());
                 arguments.insert("time_base".to_string(), time_base.to_string());
-                let filter = KPFilter::new("abuffer", arguments, vec![])?;
+                let filter = KPFilter::new("abuffer", "abuffer", arguments, vec![])?;
                 self.add_filter(vec![filter])?;
             }
         }
@@ -134,11 +135,11 @@ impl KPGraph {
         assert!(!self.media_type.is_unknown());
         match self.media_type.clone() {
             r if r == KPAVMediaType::from(AVMEDIA_TYPE_VIDEO) => {
-                let filter = KPFilter::new("buffersink", BTreeMap::new(), vec![])?;
+                let filter = KPFilter::new("buffersink", "buffersink", BTreeMap::new(), vec![])?;
                 self.add_filter(vec![filter])?;
             }
             r if r == KPAVMediaType::from(AVMEDIA_TYPE_AUDIO) => {
-                let filter = KPFilter::new("abuffersink", BTreeMap::new(), vec![])?;
+                let filter = KPFilter::new("abuffersink", "abuffersink", BTreeMap::new(), vec![])?;
                 self.add_filter(vec![filter])?;
             }
             _ => {}
@@ -233,7 +234,7 @@ impl KPGraph {
                         let prev_pad = prev_output_pad.pop_front().unwrap();
                         let next_pad = next_output_pad.pop_front().unwrap();
                         debug!("link filter prev_name: {} prev_index: {}, next_name: {}, next_index: {}, next_args: {}",
-                                prev_chain_item.filter.get_name(), prev_pad, next_chain_item.filter.get_name(), next_pad, next_chain_item.filter.format_arguments());
+                                prev_chain_item.filter.get_filter_name(), prev_pad, next_chain_item.filter.get_filter_name(), next_pad, next_chain_item.filter.format_arguments());
                         let ret = unsafe { avfilter_link(prev_chain_item.filter_context.get(), prev_pad as c_uint, next_chain_item.filter_context.get(), next_pad as c_uint) };
                         if ret < 0 {
                             return Err(anyhow!("link failed. error: {:?}", averror!(ret)));
@@ -312,6 +313,25 @@ impl KPGraph {
 
     pub fn get_status(&self) -> &KPGraphStatus {
         &self.status
+    }
+
+    pub fn send_command(&self, command: BTreeMap<String, BTreeMap<String, String>>) -> Result<()> {
+        assert_eq!(self.status, KPGraphStatus::Opened);
+
+        for chain in self.filter_chain.iter() {
+            for item in chain.iter() {
+                let name = item.filter.get_name();
+                if let Some(cmd) = command.get(name) {
+                    for (cmd_key, cmd_value) in cmd.iter() {
+                        let ret = unsafe { avfilter_graph_send_command(self.filter_graph.get(), cstring!(name).as_ptr(), cstring!(cmd_key).as_ptr(), cstring!(cmd_value).as_ptr(), ptr::null_mut(), 0, 0) };
+                        if ret < 0 {
+                            return Err(anyhow!("send graph command failed. error: {:?}", averror!(ret)));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }
 
