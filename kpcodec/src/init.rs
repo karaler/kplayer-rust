@@ -3,7 +3,7 @@ use dotenv::dotenv;
 
 static INIT: Once = Once::new();
 
-pub fn initialize() {
+pub(crate) fn initialize() {
     INIT.call_once(|| {
         dotenv().ok();
     });

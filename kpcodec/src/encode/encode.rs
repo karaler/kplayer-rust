@@ -423,55 +423,55 @@ fn test_encode() {
         graph.injection_source(&decode).unwrap();
         if media_type.eq(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO) {
             {
-                let mut argument = HashMap::new();
+                let mut argument = BTreeMap::new();
                 argument.insert("w".to_string(), "848".to_string());
                 argument.insert("h".to_string(), "480".to_string());
-                let filter = KPFilter::new("scale", argument).unwrap();
+                let filter = KPFilter::new("scale", argument, vec![]).unwrap();
                 graph.add_filter(vec![filter]).unwrap();
             }
             {
-                let mut argument = HashMap::new();
+                let mut argument = BTreeMap::new();
                 argument.insert("pix_fmts".to_string(), KPAVPixelFormat::from(AV_PIX_FMT_YUV420P).to_string());
-                let filter = KPFilter::new("format", argument).unwrap();
+                let filter = KPFilter::new("format", argument, vec![]).unwrap();
                 graph.add_filter(vec![filter]).unwrap();
             }
             {
-                let mut argument = HashMap::new();
+                let mut argument = BTreeMap::new();
                 argument.insert("fps".to_string(), 29.to_string());
-                let filter = KPFilter::new("fps", argument).unwrap();
+                let filter = KPFilter::new("fps", argument, vec![]).unwrap();
                 graph.add_filter(vec![filter]).unwrap();
             }
             {
-                let mut argument = HashMap::new();
+                let mut argument = BTreeMap::new();
                 argument.insert("PTS-STARTPTS".to_string(), "".to_string());
-                let filter = KPFilter::new("setpts", argument).unwrap();
+                let filter = KPFilter::new("setpts", argument, vec![]).unwrap();
                 graph.add_filter(vec![filter]).unwrap();
             }
         } else if media_type.eq(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO) {
             {
-                let mut argument = HashMap::new();
+                let mut argument = BTreeMap::new();
                 argument.insert("sample_fmts".to_string(), KPAVSampleFormat::from(AV_SAMPLE_FMT_FLTP).to_string());
-                let filter = KPFilter::new("aformat", argument).unwrap();
+                let filter = KPFilter::new("aformat", argument, vec![]).unwrap();
                 graph.add_filter(vec![filter]).unwrap();
             }
             {
-                let mut argument = HashMap::new();
+                let mut argument = BTreeMap::new();
                 argument.insert("ocl".to_string(), 3.to_string());
                 argument.insert("och".to_string(), 2.to_string());
                 argument.insert("out_sample_rate".to_string(), 48000.to_string());
-                let filter = KPFilter::new("aresample", argument).unwrap();
+                let filter = KPFilter::new("aresample", argument, vec![]).unwrap();
                 graph.add_filter(vec![filter]).unwrap();
             }
             {
-                let mut argument = HashMap::new();
+                let mut argument = BTreeMap::new();
                 argument.insert("r".to_string(), 48000.to_string());
-                let filter = KPFilter::new("asetrate", argument).unwrap();
+                let filter = KPFilter::new("asetrate", argument, vec![]).unwrap();
                 graph.add_filter(vec![filter]).unwrap();
             }
             {
-                let mut argument = HashMap::new();
+                let mut argument = BTreeMap::new();
                 argument.insert("PTS-STARTPTS".to_string(), "".to_string());
-                let filter = KPFilter::new("asetpts", argument).unwrap();
+                let filter = KPFilter::new("asetpts", argument, vec![]).unwrap();
                 graph.add_filter(vec![filter]).unwrap();
             }
         }

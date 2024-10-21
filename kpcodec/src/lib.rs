@@ -1,10 +1,10 @@
 use serde::Serialize;
 
 pub mod decode;
-mod util;
-mod init;
-mod filter;
-mod encode;
+pub mod util;
+pub mod init;
+pub mod filter;
+pub mod encode;
 
 #[macro_export]
 macro_rules! cstring {
