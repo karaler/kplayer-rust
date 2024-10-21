@@ -1,3 +1,6 @@
+use std::time::Duration;
+use log::debug;
+use tokio::sync::broadcast::error::TryRecvError;
 use crate::scene::*;
 
 pub trait KPSceneGraph {
@@ -291,65 +294,86 @@ async fn update_plugin_argument() -> Result<()> {
         audio_graph.set_frame_size(encode.get_audio_frame_size()?)?;
     }
 
-    let mut count = 0;
-    for get_frame in decode.iter() {
-        count = count + 1;
-        if count == 5000 {
-            // Receive messages from msg_receiver
-            let graph = graph_map.get_mut(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO).unwrap();
-            let mut update_arguments = BTreeMap::new();
-            update_arguments.insert("text".to_string(), "changed".to_string());
-            let cmd = scene.get_update_argument(update_arguments).await?;
-            graph.send_command(cmd)?;
-        }
+    // async update argument
+    let (tx, rx) = tokio::sync::broadcast::channel::<i32>(100);
 
-        // process frame
-        let (media_type, frame) = get_frame?;
-        info!("decode frame. pts: {}, media_type: {}", frame.get().pts, media_type);
+    // sleep send msg
+    let tx_clone = tx.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        tx_clone.send(1).unwrap();
+        info!("send message");
+    });
 
-        // send to graph
-        let graph = graph_map.get_mut(&media_type).unwrap();
-        graph.stream_to_graph(frame)?;
-        for filter_frame in graph.iter() {
-            let get_filter_frame = filter_frame?;
-            info!("filter frame. pts: {}", get_filter_frame.get().pts);
+    let transcode = tokio::task::spawn_blocking(move || {
+        futures::executor::block_on(async move {
+            let mut receiver = tx.subscribe();
+            for get_frame in decode.iter() {
+                // Receive messages from msg_receiver
+                loop {
+                    let msg = match receiver.try_recv() {
+                        Err(_) => break,
+                        Ok(msg) => {
+                            info!("receive message {}",msg);
+                            let graph = graph_map.get_mut(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO).unwrap();
+                            let mut update_arguments = BTreeMap::new();
+                            update_arguments.insert("text".to_string(), "changed".to_string());
+                            let cmd = scene.get_update_argument(update_arguments).await?;
+                            graph.send_command(cmd)?;
+                        }
+                    };
+                }
 
-            encode.stream_to_encode(get_filter_frame, &media_type)?;
+                // process frame
+                let (media_type, frame) = get_frame?;
+                debug!("decode frame. pts: {}, media_type: {}", frame.get().pts, media_type);
 
+                // send to graph
+                let graph = graph_map.get_mut(&media_type).unwrap();
+                graph.stream_to_graph(frame)?;
+                for filter_frame in graph.iter() {
+                    let get_filter_frame = filter_frame?;
+                    debug!("filter frame. pts: {}", get_filter_frame.get().pts);
+
+                    encode.stream_to_encode(get_filter_frame, &media_type)?;
+
+                    // send to encode
+                    while let Some(packet) = encode.iter().next() {
+                        encode.write(&packet)?
+                    }
+                }
+            }
+
+            for (media_type, graph) in graph_map.iter_mut() {
+                graph.flush()?;
+                for filter_frame in graph.iter() {
+                    let get_filter_frame = filter_frame?;
+                    debug!("filter frame. pts: {}", get_filter_frame.get().pts);
+
+                    encode.stream_to_encode(get_filter_frame, media_type)?;
+
+                    // send to encode
+                    while let Some(packet) = encode.iter().next() {
+                        encode.write(&packet)?
+                    }
+                }
+            }
+
+            encode.flush()?;
             // send to encode
             while let Some(packet) = encode.iter().next() {
                 encode.write(&packet)?
             }
-        }
-    }
 
-    for (media_type, graph) in graph_map.iter_mut() {
-        graph.flush()?;
-        for filter_frame in graph.iter() {
-            let get_filter_frame = filter_frame?;
-            info!("filter frame. pts: {}", get_filter_frame.get().pts);
+            encode.write_trailer()?;
 
-            encode.stream_to_encode(get_filter_frame, media_type)?;
-
-            // send to encode
-            while let Some(packet) = encode.iter().next() {
-                encode.write(&packet)?
+            assert_eq!(decode.get_status(), &KPCodecStatus::Ended);
+            for (_, graph) in graph_map.iter() {
+                assert_eq!(graph.get_status(), &KPGraphStatus::Ended);
             }
-        }
-    }
 
-    encode.flush()?;
-    // send to encode
-    while let Some(packet) = encode.iter().next() {
-        encode.write(&packet)?
-    }
-
-    encode.write_trailer()?;
-
-    assert_eq!(decode.get_status(), &KPCodecStatus::Ended);
-    for (_, graph) in graph_map.iter() {
-        assert_eq!(graph.get_status(), &KPGraphStatus::Ended);
-    }
-
-    Ok(())
+            Ok(())
+        })
+    });
+    transcode.await?
 }

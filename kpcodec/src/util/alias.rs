@@ -7,6 +7,7 @@ use crate::util::*;
 // KPAVFormatContext
 #[derive(Debug)]
 pub struct KPAVFormatContext(pub *mut AVFormatContext);
+unsafe impl Send for KPAVFormatContext {}
 
 impl Default for KPAVFormatContext {
     fn default() -> Self {
@@ -169,6 +170,7 @@ pub struct KPAVCodecContext {
     codec_context: *mut AVCodecContext,
     is_flushed: bool,
 }
+unsafe impl Send for KPAVCodecContext {}
 
 impl Default for KPAVCodecContext {
     fn default() -> Self {
@@ -274,6 +276,7 @@ impl KPAVFrame {
 // KPAVPacket
 #[derive(Debug)]
 pub struct KPAVPacket(*mut AVPacket);
+unsafe impl Send for KPAVPacket {}
 
 impl Default for KPAVPacket {
     fn default() -> Self {
@@ -360,6 +363,7 @@ impl KPAVRational {
 pub struct KPAVFilterGraph {
     filter_graph: *mut AVFilterGraph,
 }
+unsafe impl Send for KPAVFilterGraph {}
 
 impl Default for KPAVFilterGraph {
     fn default() -> Self {
@@ -403,6 +407,7 @@ impl KPAVFilterGraph {
 // KPFilter
 #[derive(Clone)]
 pub struct KPAVFilter(*const AVFilter);
+unsafe impl Send for KPAVFilter {}
 
 impl Default for KPAVFilter {
     fn default() -> Self {
@@ -428,6 +433,7 @@ impl KPAVFilter {
 pub struct KPAVFilterContext {
     filter_context: *mut AVFilterContext,
 }
+unsafe impl Send for KPAVFilterContext {}
 
 impl Default for KPAVFilterContext {
     fn default() -> Self {
