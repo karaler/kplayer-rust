@@ -203,6 +203,23 @@ impl KPDecode {
         }
         debug!("find streams: {:?}", self.streams);
 
+        if self.expect_stream_index.is_empty() {
+            warn!("expect stream is empty");
+
+            // gather media types of all streams
+            unsafe {
+                for i in 0..self.format_context_ptr.get().nb_streams as usize {
+                    let stream_ptr_ptr = self.format_context_ptr.get().streams.add(i);
+                    let stream_ptr = *stream_ptr_ptr;
+                    if !stream_ptr.is_null() {
+                        let stream = *stream_ptr;
+                        let media_type = KPAVMediaType::from((*stream.codecpar).codec_type);
+                        self.expect_stream_index.insert(media_type, None);
+                    }
+                }
+            }
+        }
+
         // set expect stream
         for (media_type, stream_index_opt) in self.expect_stream_index.iter_mut() {
             let stream_index: i64 = match stream_index_opt {
@@ -216,10 +233,6 @@ impl KPDecode {
                 return Err(anyhow!("find expect stream failed. media_type:{}, stream_index: {:?}, error: {:?}", media_type,stream_index_opt,averror!(ret)));
             }
             *stream_index_opt = Some(ret as usize);
-        }
-
-        if self.expect_stream_index.is_empty() {
-            warn!("expect stream is empty");
         }
 
         debug!("expect streams: {:?}",self.expect_stream_index);
@@ -404,6 +417,10 @@ impl KPDecode {
 
     pub fn get_status(&self) -> &KPCodecStatus {
         &self.status
+    }
+
+    pub fn get_expect_streams(&self) -> &HashMap<KPAVMediaType, Option<usize>> {
+        &self.expect_stream_index
     }
 }
 

@@ -1,5 +1,6 @@
 use std::ffi::CString;
 use std::ptr::null_mut;
+use serde::{Deserialize, Serialize};
 use crate::init::initialize;
 use crate::mut_ptr;
 use crate::util::*;
@@ -119,7 +120,7 @@ fn test_dict() {
 }
 
 // KPAVMediaType
-#[derive(Eq, PartialEq, Debug, Hash, Copy, Clone, Ord, PartialOrd)]
+#[derive(Eq, PartialEq, Debug, Hash, Copy, Clone, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct KPAVMediaType(AVMediaType);
 
 impl Display for KPAVMediaType {
@@ -350,6 +351,10 @@ impl KPAVRational {
         KPAVRational(AVRational { num: fps as c_int, den: 1 })
     }
 
+    pub fn get_fps(&self) -> usize {
+        (self.0.num / self.0.den) as usize
+    }
+
     pub fn get(&self) -> AVRational {
         self.0
     }
@@ -472,7 +477,7 @@ impl KPAVFilterContext {
 }
 
 // KPAVPixelFormat
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct KPAVPixelFormat(AVPixelFormat);
 
 impl Display for KPAVPixelFormat {
@@ -497,7 +502,7 @@ impl KPAVPixelFormat {
 }
 
 // KPAVSampleFormat
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct KPAVSampleFormat(AVSampleFormat);
 
 impl Display for KPAVSampleFormat {
@@ -522,7 +527,7 @@ impl KPAVSampleFormat {
 }
 
 // KPAVCodecId
-#[derive(Eq, PartialEq, Debug, Default)]
+#[derive(Eq, PartialEq, Debug, Default, Clone)]
 pub struct KPAVCodecId(AVCodecID);
 
 impl Display for KPAVCodecId {

@@ -1,18 +1,18 @@
 use crate::util::*;
 
-#[derive(Debug, Display, EnumString)]
+#[derive(Debug, Display, EnumString, Clone)]
 pub enum KPEncodeParameterProfile {
     #[strum(serialize = "high")]
     High,
 }
 
-#[derive(Debug, Display, EnumString)]
+#[derive(Debug, Display, EnumString, Clone)]
 pub enum KPEncodeParameterPreset {
     #[strum(serialize = "veryfast")]
     VeryFast,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum KPEncodeParameter {
     Video {
         codec_id: KPAVCodecId,
@@ -67,6 +67,28 @@ impl KPEncodeParameter {
             }
             _ => {
                 panic!("not support media type");
+            }
+        }
+    }
+
+    pub fn get_video_parameter(&self) -> Result<(KPAVCodecId, usize, usize, KPAVPixelFormat, KPAVRational, usize, u16, KPEncodeParameterProfile, KPEncodeParameterPreset, u16, BTreeMap<String, String>)> {
+        match self {
+            KPEncodeParameter::Video { codec_id, width, height, pix_fmt, framerate, max_bitrate, quality, profile, preset, gop_uint, metadata } => {
+                Ok((codec_id.clone(), width.clone(), height.clone(), pix_fmt.clone(), framerate.clone(), max_bitrate.clone(), quality.clone(), profile.clone(), preset.clone(), gop_uint.clone(), metadata.clone()))
+            }
+            KPEncodeParameter::Audio { .. } => {
+                Err(anyhow!("not support audio parameter"))
+            }
+        }
+    }
+
+    pub fn get_audio_parameter(&self) -> Result<(KPAVCodecId, usize, KPAVSampleFormat, usize, usize, BTreeMap<String, String>)> {
+        match self {
+            KPEncodeParameter::Audio { codec_id, sample_rate, sample_fmt, channel_layout, channels, metadata } => {
+                Ok((codec_id.clone(), sample_rate.clone(), sample_fmt.clone(), channel_layout.clone(), channels.clone(), metadata.clone()))
+            }
+            KPEncodeParameter::Video { .. } => {
+                Err(anyhow!("not support video parameter"))
             }
         }
     }

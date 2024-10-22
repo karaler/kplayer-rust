@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 use derivative::Derivative;
 use wasmtime::{Config, Engine, Memory};
@@ -43,6 +44,11 @@ pub struct KPEngine {
 }
 
 impl KPEngine {
+    pub async fn new_with_file(file_path: PathBuf) -> Result<Self> {
+        let file_data = fs::read(file_path)?;
+        KPEngine::new(file_data).await
+    }
+
     pub async fn new(bytecode: Vec<u8>) -> Result<Self> {
         let engine = Engine::new(Config::new().async_support(true))?;
 

@@ -2,10 +2,7 @@ use crate::scene::*;
 use crate::scene::engine::wasm::KPEngine;
 
 pub struct KPScene {
-    pub media_type: KPAVMediaType,
-    groups: Vec<Vec<KPFilter>>,
-    pub sort_type: KPSceneSortType,
-    engine: KPEngine,
+    engines: BTreeMap<String, KPEngine>,
 }
 
 #[derive(Default, Clone, Debug, PartialOrd, PartialEq)]
@@ -26,24 +23,39 @@ impl KPSceneSortType {
 }
 
 impl KPScene {
-    pub fn new(engine: KPEngine) -> Self {
+    pub fn new() -> Self {
         KPScene {
-            media_type: engine.media_type.clone(),
-            groups: engine.groups.clone(),
-            sort_type: engine.sort_type.clone(),
-            engine,
+            engines: Default::default(),
         }
     }
 
-    pub fn add_group(&mut self, group: Vec<KPFilter>) {
-        self.groups.push(group);
+    pub fn iter(&self) -> impl Iterator<Item=&KPEngine> {
+        self.engines.values()
     }
 
-    pub fn get_filters(&self) -> Vec<Vec<KPFilter>> {
-        self.groups.clone()
+    pub fn iter_key(&self) -> impl Iterator<Item=&String> {
+        self.engines.keys()
     }
 
-    pub async fn get_update_argument(&self, arguments: BTreeMap<String, String>) -> Result<BTreeMap<String, BTreeMap<String, String>>> {
-        self.engine.get_update_command(arguments).await
+    pub fn add_engine<T: ToString>(&mut self, name: T, engine: KPEngine) {
+        self.engines.insert(name.to_string(), engine);
+    }
+
+    pub fn get_filters(&self, name: &String) -> Result<Vec<Vec<KPFilter>>> {
+        let engine = match self.engines.get(name) {
+            None => return Err(anyhow!("name not found")),
+            Some(e) => e,
+        };
+        Ok(engine.groups.clone())
+    }
+
+    pub fn get_update_argument<T: ToString>(&self, name: T, arguments: BTreeMap<String, String>) -> Result<BTreeMap<String, BTreeMap<String, String>>> {
+        let engine = match self.engines.get(&name.to_string()) {
+            None => return Err(anyhow!("name not found")),
+            Some(e) => e,
+        };
+        futures::executor::block_on(async {
+            engine.get_update_command(arguments).await
+        })
     }
 }

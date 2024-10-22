@@ -20,7 +20,7 @@ use crate::memory_split;
 use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
-pub(crate) mod wasm;
+pub mod wasm;
 pub(crate) mod version;
 pub(crate) mod vars;
 pub(crate) mod caller;
