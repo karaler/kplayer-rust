@@ -112,7 +112,7 @@ async fn load_plugin() -> Result<()> {
     let wasm_path = env::var("TEXT_WASM_PATH")?;
     let file_data = fs::read(wasm_path)?;
     let mut scene = KPScene::new();
-    scene.add_engine("app", KPEngine::new(file_data).await?);
+    scene.add_engine("app", KPEngine::new(file_data, Default::default()).await?);
 
     // create graph
     let mut graph_map = HashMap::new();
@@ -224,7 +224,7 @@ async fn update_plugin_argument() -> Result<()> {
     let wasm_path = env::var("TEXT_WASM_PATH")?;
     let file_data = fs::read(wasm_path).expect("plugin file not found");
     let mut scene = KPScene::new();
-    scene.add_engine("app", KPEngine::new(file_data).await?);
+    scene.add_engine("app", KPEngine::new(file_data, Default::default()).await?);
 
     // create graph
     let mut graph_map = HashMap::new();

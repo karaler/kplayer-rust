@@ -22,6 +22,7 @@ pub struct KPEngine {
     pub sort_type: KPSceneSortType,
     pub default_arguments: BTreeMap<String, String>,
     pub allow_arguments: Vec<String>,
+    pub custom_arguments: BTreeMap<String, String>,
     pub version: KPEngineVersion,
     pub status: KPEngineStatus,
 
@@ -44,12 +45,12 @@ pub struct KPEngine {
 }
 
 impl KPEngine {
-    pub async fn new_with_file(file_path: PathBuf) -> Result<Self> {
+    pub async fn new_with_file(file_path: PathBuf, custom_arguments: BTreeMap<String, String>) -> Result<Self> {
         let file_data = fs::read(file_path)?;
-        KPEngine::new(file_data).await
+        KPEngine::new(file_data, custom_arguments).await
     }
 
-    pub async fn new(bytecode: Vec<u8>) -> Result<Self> {
+    pub async fn new(bytecode: Vec<u8>, custom_arguments: BTreeMap<String, String>) -> Result<Self> {
         let engine = Engine::new(Config::new().async_support(true))?;
 
         let wasi_ctx = WasiCtxBuilder::new()
@@ -66,6 +67,7 @@ impl KPEngine {
 
         let mut engine = KPEngine {
             bytecode,
+            custom_arguments,
             app: "".to_string(),
             author: "".to_string(),
             media_type: Default::default(),

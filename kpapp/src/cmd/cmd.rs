@@ -57,7 +57,7 @@ impl KPAppCmd {
             for scene_item in cfg.scene.list.iter() {
                 let plugin_path = self.context.plugin_sub_path.join(scene_item.name.clone() + &self.context.plugin_extension);
                 debug!("load plugin path: {:?}", plugin_path);
-                scene.add_engine(scene_item.name.clone(), KPEngine::new_with_file(plugin_path).await?);
+                scene.add_engine(scene_item.name.clone(), KPEngine::new_with_file(plugin_path, scene_item.arguments.clone()).await?);
             }
             debug!("load scene success");
 
