@@ -73,12 +73,14 @@ pub struct KPEncode {
     encode_parameter: BTreeMap<KPAVMediaType, KPEncodeParameter>,
     streams: BTreeMap<usize, KPEncodeStreamContext>,
     metadata: BTreeMap<String, String>,
+    enable_sync_timestamp: bool,
 
     // state
     lead_stream_index: usize,
     status: KPCodecStatus,
     maintainer: Option<(i64, i64)>,
     position: Duration,
+    sync_timestamp: Option<i64>,
 }
 
 impl KPEncode {
@@ -98,6 +100,10 @@ impl KPEncode {
     pub fn redirect_path<T: ToString>(&mut self, output_path: T) {
         assert_eq!(self.status, KPCodecStatus::None);
         self.output_path = output_path.to_string();
+        if self.output_path.starts_with("rtmp://") {
+            self.enable_sync_timestamp = true;
+        }
+
         debug!("redirect output path. path: {}", self.output_path);
     }
 
@@ -332,6 +338,29 @@ impl KPEncode {
                         packet.get().stream_index = stream_index.clone() as c_int;
                         trace!("transform packet. index:{}, media_type:{}, pts:{}, dts: {}", stream_index, stream_context.media_type, packet.get().pts, packet.get().dts);
 
+                        // sync timestamp
+                        if packet.get().pts >= 0 {
+                            self.position = Duration::from_secs_f64(packet.get().pts as f64 * av_q2d(stream_context.time_base.get()) as f64);
+                            trace!("current position. steam_index:{}, position: {:?}", stream_index, self.position);
+                        }
+
+                        if self.enable_sync_timestamp {
+                            if self.sync_timestamp.is_none() {
+                                self.sync_timestamp = Some(unsafe { av_gettime() });
+                            }
+
+                            let sync_timestamp = self.sync_timestamp.unwrap();
+                            let stream_time_base = &stream_context.time_base;
+                            if packet.is_valid() && packet.get().pts >= 0 {
+                                let interval_time = unsafe { av_gettime() } - sync_timestamp;
+                                let current_packet_timestamp = unsafe { av_rescale_q(packet.get().pts, stream_time_base.get(), AV_TIME_BASE_Q) };
+                                if current_packet_timestamp > interval_time {
+                                    let sleep_sec = current_packet_timestamp - interval_time;
+                                    trace!("usleep sec for sync timestamp. sec: {}", sleep_sec);
+                                    unsafe { av_usleep(sleep_sec as c_uint) };
+                                }
+                            }
+                        }
 
                         // push packet
                         assert!(packet.is_valid());
@@ -426,32 +455,32 @@ fn test_encode() {
                 let mut argument = BTreeMap::new();
                 argument.insert("w".to_string(), "848".to_string());
                 argument.insert("h".to_string(), "480".to_string());
-                let filter = KPFilter::new("scale", argument, vec![]).unwrap();
+                let filter = KPFilter::new("scale", "scale", argument, vec![]).unwrap();
                 graph.add_filter(vec![filter]).unwrap();
             }
             {
                 let mut argument = BTreeMap::new();
                 argument.insert("pix_fmts".to_string(), KPAVPixelFormat::from(AV_PIX_FMT_YUV420P).to_string());
-                let filter = KPFilter::new("format", argument, vec![]).unwrap();
+                let filter = KPFilter::new("format", "format", argument, vec![]).unwrap();
                 graph.add_filter(vec![filter]).unwrap();
             }
             {
                 let mut argument = BTreeMap::new();
                 argument.insert("fps".to_string(), 29.to_string());
-                let filter = KPFilter::new("fps", argument, vec![]).unwrap();
+                let filter = KPFilter::new("fps", "fps", argument, vec![]).unwrap();
                 graph.add_filter(vec![filter]).unwrap();
             }
             {
                 let mut argument = BTreeMap::new();
                 argument.insert("PTS-STARTPTS".to_string(), "".to_string());
-                let filter = KPFilter::new("setpts", argument, vec![]).unwrap();
+                let filter = KPFilter::new("setpts", "setpts", argument, vec![]).unwrap();
                 graph.add_filter(vec![filter]).unwrap();
             }
         } else if media_type.eq(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO) {
             {
                 let mut argument = BTreeMap::new();
                 argument.insert("sample_fmts".to_string(), KPAVSampleFormat::from(AV_SAMPLE_FMT_FLTP).to_string());
-                let filter = KPFilter::new("aformat", argument, vec![]).unwrap();
+                let filter = KPFilter::new("aformat", "aformat", argument, vec![]).unwrap();
                 graph.add_filter(vec![filter]).unwrap();
             }
             {
@@ -459,19 +488,19 @@ fn test_encode() {
                 argument.insert("ocl".to_string(), 3.to_string());
                 argument.insert("och".to_string(), 2.to_string());
                 argument.insert("out_sample_rate".to_string(), 48000.to_string());
-                let filter = KPFilter::new("aresample", argument, vec![]).unwrap();
+                let filter = KPFilter::new("aresample", "aresample", argument, vec![]).unwrap();
                 graph.add_filter(vec![filter]).unwrap();
             }
             {
                 let mut argument = BTreeMap::new();
                 argument.insert("r".to_string(), 48000.to_string());
-                let filter = KPFilter::new("asetrate", argument, vec![]).unwrap();
+                let filter = KPFilter::new("asetrate", "asetrate", argument, vec![]).unwrap();
                 graph.add_filter(vec![filter]).unwrap();
             }
             {
                 let mut argument = BTreeMap::new();
                 argument.insert("PTS-STARTPTS".to_string(), "".to_string());
-                let filter = KPFilter::new("asetpts", argument, vec![]).unwrap();
+                let filter = KPFilter::new("asetpts", "asetpts", argument, vec![]).unwrap();
                 graph.add_filter(vec![filter]).unwrap();
             }
         }
@@ -481,6 +510,155 @@ fn test_encode() {
 
     let mut encode = KPEncode::new("flv", encode_parameter);
     encode.redirect_path("/tmp/main.flv");
+    encode.open().unwrap();
+    encode.write_header().unwrap();
+
+    // set frame size
+    if let Some(audio_graph) = graph_map.get_mut(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO) {
+        audio_graph.set_frame_size(encode.get_audio_frame_size().unwrap()).unwrap();
+    }
+
+    for get_frame in decode.iter() {
+        let (media_type, frame) = get_frame.unwrap();
+        info!("decode frame. pts: {}, media_type: {}", frame.get().pts, media_type);
+
+        // send to graph
+        let graph = graph_map.get_mut(&media_type).unwrap();
+        graph.stream_to_graph(frame).unwrap();
+        for filter_frame in graph.iter() {
+            let get_filter_frame = filter_frame.unwrap();
+            info!("filter frame. pts: {}", get_filter_frame.get().pts);
+
+            encode.stream_to_encode(get_filter_frame, &media_type).unwrap();
+
+            // send to encode
+            while let Some(packet) = encode.iter().next() {
+                encode.write(&packet).unwrap()
+            }
+        }
+    }
+
+    for (media_type, graph) in graph_map.iter_mut() {
+        graph.flush().unwrap();
+        for filter_frame in graph.iter() {
+            let get_filter_frame = filter_frame.unwrap();
+            info!("filter frame. pts: {}", get_filter_frame.get().pts);
+
+            encode.stream_to_encode(get_filter_frame, media_type).unwrap();
+
+            // send to encode
+            while let Some(packet) = encode.iter().next() {
+                encode.write(&packet).unwrap()
+            }
+        }
+    }
+
+    encode.flush().unwrap();
+    // send to encode
+    while let Some(packet) = encode.iter().next() {
+        encode.write(&packet).unwrap()
+    }
+
+    encode.write_trailer().unwrap();
+
+    assert_eq!(decode.get_status(), &KPCodecStatus::Ended);
+    for (_, graph) in graph_map.iter() {
+        assert_eq!(graph.get_status(), &KPGraphStatus::Ended);
+    }
+}
+
+#[test]
+fn test_encode_rtmp() {
+    use crate::decode::decode::KPDecode;
+    initialize();
+
+    let output_rtmp = env::var("OUTPUT_RTMP").unwrap();
+    let mut decode = KPDecode::new(env::var("INPUT_PATH").unwrap());
+    decode.open().unwrap();
+
+    // set expect stream
+    let mut expect_streams = HashMap::new();
+    expect_streams.insert(KPAVMediaType::KPAVMEDIA_TYPE_VIDEO, None);
+    expect_streams.insert(KPAVMediaType::KPAVMEDIA_TYPE_AUDIO, None);
+    decode.set_expect_stream(expect_streams.clone());
+    decode.find_streams().unwrap();
+    decode.open_codec().unwrap();
+
+    // create encode custom parameters
+    let mut encode_parameter = BTreeMap::new();
+    for (media_type, _) in expect_streams.iter() {
+        if media_type.eq(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO) {
+            encode_parameter.insert(media_type.clone(), KPEncodeParameter::default(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO));
+        } else if media_type.eq(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO) {
+            encode_parameter.insert(media_type.clone(), KPEncodeParameter::default(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO));
+        }
+    }
+
+    // create graph
+    let mut graph_map = HashMap::new();
+    for (media_type, _) in expect_streams.iter() {
+        let mut graph = KPGraph::new(media_type);
+        graph.injection_source(&decode).unwrap();
+        if media_type.eq(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO) {
+            {
+                let mut argument = BTreeMap::new();
+                argument.insert("w".to_string(), "848".to_string());
+                argument.insert("h".to_string(), "480".to_string());
+                let filter = KPFilter::new("scale", "scale", argument, vec![]).unwrap();
+                graph.add_filter(vec![filter]).unwrap();
+            }
+            {
+                let mut argument = BTreeMap::new();
+                argument.insert("pix_fmts".to_string(), KPAVPixelFormat::from(AV_PIX_FMT_YUV420P).to_string());
+                let filter = KPFilter::new("format", "format", argument, vec![]).unwrap();
+                graph.add_filter(vec![filter]).unwrap();
+            }
+            {
+                let mut argument = BTreeMap::new();
+                argument.insert("fps".to_string(), 29.to_string());
+                let filter = KPFilter::new("fps", "fps", argument, vec![]).unwrap();
+                graph.add_filter(vec![filter]).unwrap();
+            }
+            {
+                let mut argument = BTreeMap::new();
+                argument.insert("PTS-STARTPTS".to_string(), "".to_string());
+                let filter = KPFilter::new("setpts", "setpts", argument, vec![]).unwrap();
+                graph.add_filter(vec![filter]).unwrap();
+            }
+        } else if media_type.eq(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO) {
+            {
+                let mut argument = BTreeMap::new();
+                argument.insert("sample_fmts".to_string(), KPAVSampleFormat::from(AV_SAMPLE_FMT_FLTP).to_string());
+                let filter = KPFilter::new("aformat", "aformat", argument, vec![]).unwrap();
+                graph.add_filter(vec![filter]).unwrap();
+            }
+            {
+                let mut argument = BTreeMap::new();
+                argument.insert("ocl".to_string(), 3.to_string());
+                argument.insert("och".to_string(), 2.to_string());
+                argument.insert("out_sample_rate".to_string(), 48000.to_string());
+                let filter = KPFilter::new("aresample", "aresample", argument, vec![]).unwrap();
+                graph.add_filter(vec![filter]).unwrap();
+            }
+            {
+                let mut argument = BTreeMap::new();
+                argument.insert("r".to_string(), 48000.to_string());
+                let filter = KPFilter::new("asetrate", "asetrate", argument, vec![]).unwrap();
+                graph.add_filter(vec![filter]).unwrap();
+            }
+            {
+                let mut argument = BTreeMap::new();
+                argument.insert("PTS-STARTPTS".to_string(), "".to_string());
+                let filter = KPFilter::new("asetpts", "asetpts", argument, vec![]).unwrap();
+                graph.add_filter(vec![filter]).unwrap();
+            }
+        }
+        graph.injection_sink().unwrap();
+        graph_map.insert(media_type.clone(), graph);
+    }
+
+    let mut encode = KPEncode::new("flv", encode_parameter);
+    encode.redirect_path(output_rtmp);
     encode.open().unwrap();
     encode.write_header().unwrap();
 
