@@ -11,3 +11,4 @@ pub(crate) mod context;
 pub(crate) mod config;
 pub(crate) mod module;
 pub(crate) mod vars;
+mod common;
