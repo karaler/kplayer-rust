@@ -136,13 +136,12 @@ impl KPDecode {
     pub fn open(&mut self) -> Result<()> {
         assert_eq!(self.status, KPCodecStatus::None);
 
-
         // open file
         {
             let mut open_options = KPAVDictionary::new(&self.format_context_options);
             let mut open_options_ptr = open_options.get();
 
-            self.format_context_ptr = KPAVFormatContext::new();
+            self.format_context_ptr = KPAVFormatContext::default();
             let mut format_context_ptr = self.format_context_ptr.as_ptr();
 
             let filepath: CString = cstring!(self.input_path.clone());
