@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::env;
 use crate::util::context::KPAppContext;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use kpcodec::decode::decode::KPDecode;
 use kpcodec::filter::graph::{KPGraph, KPGraphStatus};
 use kpcodec::util::alias::KPAVMediaType;
@@ -43,7 +43,7 @@ impl KPAppCmd {
                     decode
                 }
             };
-            decode.open()?;
+            decode.open().map_err(|err| anyhow!("open input media file failed. path: {:?}, error: {}", item.resource, err))?;
             decode.find_streams()?;
             decode.open_codec()?;
             decode.stream_to_codec()?;

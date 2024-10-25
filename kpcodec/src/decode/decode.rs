@@ -141,15 +141,14 @@ impl KPDecode {
             let mut open_options = KPAVDictionary::new(&self.format_context_options);
             let mut open_options_ptr = open_options.get();
 
-            self.format_context_ptr = KPAVFormatContext::default();
-            let mut format_context_ptr = self.format_context_ptr.as_ptr();
-
+            let mut format_context_ptr: *mut AVFormatContext = ptr::null_mut();
             let filepath: CString = cstring!(self.input_path.clone());
             let ret = unsafe {
                 avformat_open_input(&mut format_context_ptr, filepath.as_ptr(), ptr::null_mut(), &mut open_options_ptr)
             };
             if ret < 0 { return Err(anyhow!("open input failed. error: {:?}",  averror!(ret))); }
             open_options.set(open_options_ptr);
+            self.format_context_ptr = KPAVFormatContext::from(format_context_ptr);
 
             assert_eq!(open_options_ptr, open_options.get());
             assert_eq!(format_context_ptr, self.format_context_ptr.as_ptr());
@@ -449,4 +448,11 @@ fn open_file() {
         let (media_type, frame) = get_frame.unwrap();
         info!("get frame. pts: {}, media_type: {}", frame.get().pts, media_type);
     }
+}
+
+#[test]
+fn open_invalid_file() {
+    initialize();
+    let mut decode = KPDecode::new(env::var("INPUT_INVALID_PATH").unwrap());
+    assert!(decode.open().is_err());
 }
