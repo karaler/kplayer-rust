@@ -433,7 +433,7 @@ impl KPDecode {
 #[test]
 fn open_file() {
     initialize();
-    let mut decode = KPDecode::new(env::var("INPUT_PATH").unwrap());
+    let mut decode = KPDecode::new(env::var("INPUT_SHORT_PATH").unwrap());
     decode.open().unwrap();
 
     // set expect stream
@@ -446,7 +446,7 @@ fn open_file() {
 
     for get_frame in decode.iter() {
         let (media_type, frame) = get_frame.unwrap();
-        info!("get frame. pts: {}, media_type: {}", frame.get().pts, media_type);
+        info!("get frame. {:?}, meida_type: {}", frame, media_type);
     }
 }
 

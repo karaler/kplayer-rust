@@ -6,6 +6,14 @@ pub enum KPCodecStatus {
     Opened,
     Started,
     Paused,
+    Flushed,
     Stopped,
     Ended,
+}
+
+#[derive(Default, Eq, PartialEq, Debug)]
+pub enum KPEncodeMode {
+    #[default]
+    File,
+    Live,
 }
