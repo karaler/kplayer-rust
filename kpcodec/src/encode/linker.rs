@@ -44,7 +44,7 @@ impl KPLinker {
         })
     }
 
-    pub fn write(&mut self, packet: &KPAVPacket) -> Result<()> {
+    pub fn write(&mut self, packet: KPAVPacket) -> Result<()> {
         assert!(matches!(self.encode.status, KPCodecStatus::Started | KPCodecStatus::Stopped));
         assert!(packet.is_valid());
 
@@ -75,5 +75,9 @@ impl KPLinker {
         self.gradient_packet_pts = max + 1000;
         self.gradient_packet_dts = max + 1000;
         self.is_gradient_ascent = true;
+    }
+
+    pub fn get_output_path(&self) -> String {
+        self.encode.output_path.clone()
     }
 }

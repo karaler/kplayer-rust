@@ -12,6 +12,7 @@ use crate::util::module::resource::ResourceItem;
 use std::path::PathBuf;
 use log::{debug, info};
 use kpcodec::encode::encode::KPEncode;
+use kpcodec::encode::linker::KPLinker;
 use kpcodec::util::codec_status::KPCodecStatus;
 use kpscene::scene::graph::KPSceneGraph;
 use crate::init::initialize;
@@ -20,21 +21,39 @@ use crate::util::vars::KPAppStatus;
 pub struct KPAppCmd {
     context: KPAppContext,
     encode_parameter: BTreeMap<KPAVMediaType, KPEncodeParameter>,
+    linker: KPLinker,
+
+    // options
+    output_format: String,
 
     // state
     status: KPAppStatus,
 }
 
 impl KPAppCmd {
-    pub fn new(context: KPAppContext, encode_parameter: BTreeMap<KPAVMediaType, KPEncodeParameter>) -> Self {
-        KPAppCmd { context, encode_parameter, status: KPAppStatus::None }
+    pub fn new(context: KPAppContext, encode_parameter: BTreeMap<KPAVMediaType, KPEncodeParameter>) -> Result<Self> {
+        let output_format = "flv".to_string();
+        let output_path = context.config.output.path.clone();
+
+        let linker = KPLinker::new(output_format.clone(), encode_parameter.clone(), output_path)?;
+        Ok(KPAppCmd {
+            context,
+            encode_parameter,
+            output_format,
+            status: KPAppStatus::None,
+            linker,
+        })
     }
 
     pub async fn start(&mut self) -> Result<()> {
-        let cfg = &self.context.config;
+        assert_eq!(self.status, KPAppStatus::None);
+
+        let cfg = self.context.config.clone();
 
         // start playlist
         for item in cfg.playlist.list.iter() {
+            assert!(matches!(self.status, KPAppStatus::None | KPAppStatus::Ended));
+
             // create decode
             let mut decode = match &item.resource {
                 ResourceItem::Single { single } => {
@@ -79,9 +98,8 @@ impl KPAppCmd {
                 graph_map.insert(media_type.clone(), graph);
             }
 
-            let output_path = cfg.output.path.clone();
             let mut encode = KPEncode::new("flv", self.encode_parameter.clone());
-            encode.redirect_path(output_path);
+            encode.enable_sync_timestamp(Some(self.linker.get_output_path()));
             encode.open()?;
             encode.write_header()?;
 
@@ -90,19 +108,22 @@ impl KPAppCmd {
                 audio_graph.set_frame_size(encode.get_audio_frame_size()?)?;
             }
 
-            // set status
-            self.status = KPAppStatus::Initialized;
-
             // transcode
-            self.transcode(decode, graph_map, encode)?
+            self.status = KPAppStatus::Initialized;
+            self.transcode(decode, graph_map, encode)?;
+
+            // set linker ascent
+            self.linker.gradient_ascent();
         }
 
         self.status = KPAppStatus::Closed;
         Ok(())
     }
 
-    fn transcode(&self, mut decode: KPDecode, mut graph_map: HashMap<KPAVMediaType, KPGraph>, mut encode: KPEncode) -> Result<()> {
+    fn transcode(&mut self, mut decode: KPDecode, mut graph_map: HashMap<KPAVMediaType, KPGraph>, mut encode: KPEncode) -> Result<()> {
         assert_eq!(self.status, KPAppStatus::Initialized);
+
+        self.status = KPAppStatus::Starting;
         for get_frame in decode.iter() {
             // process frame
             let (media_type, frame) = get_frame?;
@@ -132,10 +153,12 @@ impl KPAppCmd {
         for (_, graph) in graph_map.iter() {
             assert_eq!(graph.get_status(), &KPGraphStatus::Ended);
         }
+
+        self.status = KPAppStatus::Ended;
         Ok(())
     }
 
-    fn transcode_graph(&self, graph: &mut KPGraph, encode: &mut KPEncode) -> Result<()> {
+    fn transcode_graph(&mut self, graph: &mut KPGraph, encode: &mut KPEncode) -> Result<()> {
         let media_type = graph.get_media_type().clone();
         for filter_frame in graph.iter() {
             let get_filter_frame = filter_frame?;
@@ -149,9 +172,9 @@ impl KPAppCmd {
         Ok(())
     }
 
-    fn transcode_encode(&self, encode: &mut KPEncode) -> Result<()> {
+    fn transcode_encode(&mut self, encode: &mut KPEncode) -> Result<()> {
         while let Some(packet) = encode.iter().next() {
-            encode.write(&packet)?;
+            self.linker.write(packet)?;
         }
         Ok(())
     }
@@ -166,7 +189,7 @@ async fn test_cmd() -> Result<()> {
     let mut encode_parameter = BTreeMap::new();
     encode_parameter.insert(KPAVMediaType::KPAVMEDIA_TYPE_VIDEO, KPEncodeParameter::default(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO));
     encode_parameter.insert(KPAVMediaType::KPAVMEDIA_TYPE_AUDIO, KPEncodeParameter::default(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO));
-    let mut cmd = KPAppCmd::new(context, encode_parameter);
+    let mut cmd = KPAppCmd::new(context, encode_parameter)?;
     cmd.start().await?;
     Ok(())
 }

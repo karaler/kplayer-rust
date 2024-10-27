@@ -3,5 +3,6 @@ pub enum KPAppStatus {
     None,
     Initialized,
     Starting,
+    Ended,
     Closed,
 }

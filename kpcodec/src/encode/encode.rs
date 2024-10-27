@@ -66,7 +66,7 @@ impl<'a> Iterator for KPEncodeIterator<'a> {
 #[derive(Default)]
 pub struct KPEncode {
     pub(super) output_format: String,
-    output_path: String,
+    pub(super) output_path: String,
 
     // formation
     format_context_options: HashMap<String, String>,
