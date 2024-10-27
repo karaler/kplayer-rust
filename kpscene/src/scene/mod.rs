@@ -19,6 +19,6 @@ use kpcodec::util::codec_status::KPCodecStatus;
 use crate::scene::engine::wasm::KPEngine;
 use crate::scene::scene::KPSceneSortType;
 
-mod scene;
-mod graph;
-mod engine;
+pub mod scene;
+pub mod graph;
+pub mod engine;

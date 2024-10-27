@@ -136,21 +136,19 @@ impl KPDecode {
     pub fn open(&mut self) -> Result<()> {
         assert_eq!(self.status, KPCodecStatus::None);
 
-
         // open file
         {
             let mut open_options = KPAVDictionary::new(&self.format_context_options);
             let mut open_options_ptr = open_options.get();
 
-            self.format_context_ptr = KPAVFormatContext::new();
-            let mut format_context_ptr = self.format_context_ptr.as_ptr();
-
+            let mut format_context_ptr: *mut AVFormatContext = ptr::null_mut();
             let filepath: CString = cstring!(self.input_path.clone());
             let ret = unsafe {
                 avformat_open_input(&mut format_context_ptr, filepath.as_ptr(), ptr::null_mut(), &mut open_options_ptr)
             };
             if ret < 0 { return Err(anyhow!("open input failed. error: {:?}",  averror!(ret))); }
             open_options.set(open_options_ptr);
+            self.format_context_ptr = KPAVFormatContext::from(format_context_ptr);
 
             assert_eq!(open_options_ptr, open_options.get());
             assert_eq!(format_context_ptr, self.format_context_ptr.as_ptr());
@@ -203,6 +201,23 @@ impl KPDecode {
         }
         debug!("find streams: {:?}", self.streams);
 
+        if self.expect_stream_index.is_empty() {
+            warn!("expect stream is empty");
+
+            // gather media types of all streams
+            unsafe {
+                for i in 0..self.format_context_ptr.get().nb_streams as usize {
+                    let stream_ptr_ptr = self.format_context_ptr.get().streams.add(i);
+                    let stream_ptr = *stream_ptr_ptr;
+                    if !stream_ptr.is_null() {
+                        let stream = *stream_ptr;
+                        let media_type = KPAVMediaType::from((*stream.codecpar).codec_type);
+                        self.expect_stream_index.insert(media_type, None);
+                    }
+                }
+            }
+        }
+
         // set expect stream
         for (media_type, stream_index_opt) in self.expect_stream_index.iter_mut() {
             let stream_index: i64 = match stream_index_opt {
@@ -216,10 +231,6 @@ impl KPDecode {
                 return Err(anyhow!("find expect stream failed. media_type:{}, stream_index: {:?}, error: {:?}", media_type,stream_index_opt,averror!(ret)));
             }
             *stream_index_opt = Some(ret as usize);
-        }
-
-        if self.expect_stream_index.is_empty() {
-            warn!("expect stream is empty");
         }
 
         debug!("expect streams: {:?}",self.expect_stream_index);
@@ -405,6 +416,10 @@ impl KPDecode {
     pub fn get_status(&self) -> &KPCodecStatus {
         &self.status
     }
+
+    pub fn get_expect_streams(&self) -> &HashMap<KPAVMediaType, Option<usize>> {
+        &self.expect_stream_index
+    }
 }
 
 impl KPDecode {
@@ -418,7 +433,7 @@ impl KPDecode {
 #[test]
 fn open_file() {
     initialize();
-    let mut decode = KPDecode::new(env::var("INPUT_PATH").unwrap());
+    let mut decode = KPDecode::new(env::var("INPUT_SHORT_PATH").unwrap());
     decode.open().unwrap();
 
     // set expect stream
@@ -431,6 +446,13 @@ fn open_file() {
 
     for get_frame in decode.iter() {
         let (media_type, frame) = get_frame.unwrap();
-        info!("get frame. pts: {}, media_type: {}", frame.get().pts, media_type);
+        info!("get frame. {:?}, meida_type: {}", frame, media_type);
     }
+}
+
+#[test]
+fn open_invalid_file() {
+    initialize();
+    let mut decode = KPDecode::new(env::var("INPUT_INVALID_PATH").unwrap());
+    assert!(decode.open().is_err());
 }

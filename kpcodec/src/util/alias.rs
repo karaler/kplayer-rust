@@ -1,5 +1,7 @@
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
+use std::fmt::Debug;
 use std::ptr::null_mut;
+use serde::{Deserialize, Serialize};
 use crate::init::initialize;
 use crate::mut_ptr;
 use crate::util::*;
@@ -119,7 +121,7 @@ fn test_dict() {
 }
 
 // KPAVMediaType
-#[derive(Eq, PartialEq, Debug, Hash, Copy, Clone, Ord, PartialOrd)]
+#[derive(Eq, PartialEq, Debug, Hash, Copy, Clone, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct KPAVMediaType(AVMediaType);
 
 impl Display for KPAVMediaType {
@@ -236,12 +238,35 @@ impl KPAVCodecContext {
 }
 
 // KPAVFrame
-#[derive(Debug)]
 pub struct KPAVFrame(*mut AVFrame);
+
+impl Debug for KPAVFrame {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "KPAVFrame({})", self.to_string())
+    }
+}
 
 impl Default for KPAVFrame {
     fn default() -> Self {
         KPAVFrame(ptr::null_mut())
+    }
+}
+
+impl Display for KPAVFrame {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.0.is_null() {
+            write!(f, "KPAVFrame(Null)")
+        } else {
+            let pict_type = match self.get().pict_type {
+                AV_PICTURE_TYPE_I => "I",
+                AV_PICTURE_TYPE_P => "P",
+                AV_PICTURE_TYPE_B => "B",
+                AV_PICTURE_TYPE_S => "S",
+                AV_PICTURE_TYPE_NONE => "NONE",
+                _ => "UNKNOWN",
+            };
+            write!(f, "KPAVFrame(pts: {}, pkt_dts: {}, type: {})", self.get().pts, self.get().pkt_dts, pict_type)
+        }
     }
 }
 
@@ -274,7 +299,6 @@ impl KPAVFrame {
 }
 
 // KPAVPacket
-#[derive(Debug)]
 pub struct KPAVPacket(*mut AVPacket);
 unsafe impl Send for KPAVPacket {}
 
@@ -284,12 +308,18 @@ impl Default for KPAVPacket {
     }
 }
 
+impl Debug for KPAVPacket {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_string())
+    }
+}
+
 impl Display for KPAVPacket {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         if self.0.is_null() {
-            write!(f, "Null")
+            write!(f, "KPAVPacket(Null)")
         } else {
-            write!(f, "stream_index: {}, pts: {}, dts: {}", self.get().stream_index, self.get().pts, self.get().dts)
+            write!(f, "KPAVPacket(stream_index: {}, pts: {}, dts: {})", self.get().stream_index, self.get().pts, self.get().dts)
         }
     }
 }
@@ -348,6 +378,10 @@ impl KPAVRational {
     }
     pub const fn from_fps(fps: usize) -> Self {
         KPAVRational(AVRational { num: fps as c_int, den: 1 })
+    }
+
+    pub fn get_fps(&self) -> usize {
+        (self.0.num / self.0.den) as usize
     }
 
     pub fn get(&self) -> AVRational {
@@ -472,7 +506,7 @@ impl KPAVFilterContext {
 }
 
 // KPAVPixelFormat
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct KPAVPixelFormat(AVPixelFormat);
 
 impl Display for KPAVPixelFormat {
@@ -497,7 +531,7 @@ impl KPAVPixelFormat {
 }
 
 // KPAVSampleFormat
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct KPAVSampleFormat(AVSampleFormat);
 
 impl Display for KPAVSampleFormat {
@@ -522,7 +556,7 @@ impl KPAVSampleFormat {
 }
 
 // KPAVCodecId
-#[derive(Eq, PartialEq, Debug, Default)]
+#[derive(Eq, PartialEq, Debug, Default, Clone)]
 pub struct KPAVCodecId(AVCodecID);
 
 impl Display for KPAVCodecId {

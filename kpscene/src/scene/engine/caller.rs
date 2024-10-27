@@ -159,8 +159,19 @@ impl KPEngine {
         for group in groups {
             let mut filter_item = Vec::new();
             for group_item in group {
-                // filter
-                let filter = KPFilter::new(group_item.name, group_item.filter_name, group_item.default_arguments.clone(), group_item.allow_arguments.clone())?;
+                // replace custom argument
+                let group_allow_arguments = group_item.allow_arguments.clone();
+                let mut group_combine_arguments = group_item.default_arguments.clone();
+                for (key, value) in self.custom_arguments.iter() {
+                    if group_allow_arguments.contains(key) {
+                        group_combine_arguments.insert(key.clone(), value.clone());
+                    }
+                }
+                debug!("plugin group. name: {}, allow_arguments: {:?}, default_arguments: {:?}, combine_arguments: {:?}",
+                    group_item.name, allow_arguments, group_allow_arguments, group_combine_arguments);
+
+                // create filter
+                let filter = KPFilter::new(group_item.name, group_item.filter_name, group_combine_arguments, group_item.allow_arguments.clone())?;
                 filter_item.push(filter);
 
                 // default_arguments

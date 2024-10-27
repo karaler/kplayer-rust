@@ -333,6 +333,10 @@ impl KPGraph {
         }
         Ok(())
     }
+
+    pub fn get_media_type(&self) -> &KPAVMediaType {
+        &self.media_type
+    }
 }
 
 impl KPGraph {
