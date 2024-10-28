@@ -202,7 +202,7 @@ impl KPDecode {
         debug!("find streams: {:?}", self.streams);
 
         if self.expect_stream_index.is_empty() {
-            warn!("expect stream is empty");
+            debug!("expect stream is empty");
 
             // gather media types of all streams
             unsafe {

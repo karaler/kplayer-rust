@@ -5,6 +5,7 @@ use crate::encode::linker::KPLinker;
 use crate::util::codec_status::KPEncodeMode;
 
 const WARN_QUEUE_LIMIT: usize = 500;
+const MEMORY_OUTPUT_PATH: &str = "/dev/null";
 
 #[derive(Default, Debug)]
 pub(super) struct KPEncodeStreamContext {
@@ -95,7 +96,7 @@ impl KPEncode {
             status: KPCodecStatus::None,
             encode_parameter,
             format_context_options,
-            output_path: String::from("/dev/null"),
+            output_path: String::from(MEMORY_OUTPUT_PATH),
             ..Default::default()
         }
     }
@@ -134,7 +135,9 @@ impl KPEncode {
         if ret < 0 { return Err(anyhow!("open output file failed. error: {:?}", averror!(ret))); }
         open_options.set(open_options_ptr);
         assert_eq!(open_options.get(), open_options_ptr);
-        info!("open output path success. path: {}, format: {}", self.output_path, self.output_format);
+        if self.output_path.ne(MEMORY_OUTPUT_PATH) {
+            info!("open output path success. path: {}, format: {}", self.output_path, self.output_format);
+        }
 
         // set metadata
         for (k, v) in self.metadata.iter() {
