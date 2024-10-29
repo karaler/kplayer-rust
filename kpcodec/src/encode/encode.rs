@@ -848,7 +848,7 @@ fn test_encode_ascent() {
                 encode.stream_to_encode(get_filter_frame, &media_type).unwrap();
                 // flush to encode
                 while let Some(packet) = encode.iter().next() {
-                    linker.write(&packet).unwrap();
+                    linker.write(packet).unwrap();
                 }
             }
         }
@@ -862,7 +862,7 @@ fn test_encode_ascent() {
                 encode.stream_to_encode(get_filter_frame, media_type).unwrap();
                 // flush to encode
                 while let Some(packet) = encode.iter().next() {
-                    linker.write(&packet).unwrap();
+                    linker.write(packet).unwrap();
                 }
             }
         }
@@ -871,7 +871,7 @@ fn test_encode_ascent() {
         // flush to encode
         while let Some(packet) = encode.iter().next() {
             info!("linker packet. {}", packet);
-            linker.write(&packet).unwrap();
+            linker.write(packet).unwrap();
         }
 
         encode.write_trailer().unwrap();

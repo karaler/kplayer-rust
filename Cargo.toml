@@ -1,3 +1,8 @@
+[package]
+name = "kplayer"
+version = "0.1.0"
+edition = "2021"
+
 [workspace]
 resolver = "2"
 members = [
@@ -9,3 +14,20 @@ members = [
     "examples/plugin/text",
     "examples/plugin/kplayer-plugin-sdk",
 ]
+
+[dependencies]
+kpapp = { path = "./kpapp" }
+kpcodec = { path = "./kpcodec" }
+kpscene = { path = "./kpscene" }
+kpserver = { path = "./kpserver" }
+streamhub = { path = "./kpserver/third-parts/harlanc/xiu/library/streamhub" }
+rtmp = { path = "./kpserver/third-parts/harlanc/xiu/protocol/rtmp" }
+httpflv = { path = "./kpserver/third-parts/harlanc/xiu/protocol/httpflv" }
+hls = { path = "./kpserver/third-parts/harlanc/xiu/protocol/hls" }
+dotenv = "0.15.0"
+env_logger = "0.11.5"
+log = "0.4.22"
+tokio = { version = "1.40.0", features = ["full"] }
+anyhow = "1.0.91"
+async-trait = "0.1.83"
+futures = "0.3.31"

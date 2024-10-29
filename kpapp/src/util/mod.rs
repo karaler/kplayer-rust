@@ -7,8 +7,8 @@ use std::path::PathBuf;
 use anyhow::anyhow;
 use crate::util::config::KPAppConfig;
 
-pub(crate) mod context;
-pub(crate) mod config;
-pub(crate) mod module;
-pub(crate) mod vars;
+pub mod context;
+pub mod config;
+pub mod module;
+pub mod vars;
 mod common;
