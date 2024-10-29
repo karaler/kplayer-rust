@@ -54,7 +54,7 @@ mod tests {
         let home_path = PathBuf::from(env::var("HOME_PATH")?);
         let kplayer_json_path = home_path.join("kplayer.json");
         if !kplayer_json_path.exists() {
-            return Err(anyhow!("The kplayer.json file does not exist at the provided home path."));
+            return Err(anyhow!("The kplayer.json file does not exist at the provided home path. file_path: {}", kplayer_json_path.display()));
         }
         let kplayer_json_content = std::fs::read_to_string(&kplayer_json_path)
             .map_err(|e| anyhow!("Failed to read kplayer.json file: {}", e))?;

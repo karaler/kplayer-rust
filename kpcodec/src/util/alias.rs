@@ -1,6 +1,7 @@
 use std::ffi::{CStr, CString};
 use std::fmt::Debug;
 use std::ptr::null_mut;
+use log::debug;
 use serde::{Deserialize, Serialize};
 use crate::init::initialize;
 use crate::mut_ptr;
@@ -231,7 +232,9 @@ impl KPAVCodecContext {
         } else {
             return Err(anyhow!("invalid codec type"));
         }
-        info!("flush codec context success");
+
+        let media_type = KPAVMediaType::from(unsafe { (*self.get().codec).type_ });
+        info!("flush codec context success, media_type: {}", media_type);
         self.is_flushed = true;
         Ok(())
     }

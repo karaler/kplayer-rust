@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::env;
+use std::panic::PanicHookInfo;
 use crate::util::context::KPAppContext;
 use anyhow::{anyhow, Result};
 use kpcodec::decode::decode::KPDecode;
@@ -18,7 +19,7 @@ use kpscene::scene::graph::KPSceneGraph;
 use crate::init::initialize;
 use crate::util::vars::KPAppStatus;
 
-pub struct KPAppCmd {
+pub struct KPApp {
     context: KPAppContext,
     encode_parameter: BTreeMap<KPAVMediaType, KPEncodeParameter>,
     linker: KPLinker,
@@ -30,13 +31,13 @@ pub struct KPAppCmd {
     status: KPAppStatus,
 }
 
-impl KPAppCmd {
+impl KPApp {
     pub fn new(context: KPAppContext, encode_parameter: BTreeMap<KPAVMediaType, KPEncodeParameter>) -> Result<Self> {
         let output_format = "flv".to_string();
         let output_path = context.config.output.path.clone();
 
         let linker = KPLinker::new(output_format.clone(), encode_parameter.clone(), output_path)?;
-        Ok(KPAppCmd {
+        Ok(KPApp {
             context,
             encode_parameter,
             output_format,
@@ -183,13 +184,14 @@ impl KPAppCmd {
 #[tokio::test]
 async fn test_cmd() -> Result<()> {
     initialize();
-    let home_path = env::var("HOME_PATH")?;
+    let home_path = PathBuf::from(env::var("HOME_PATH")?);
+    let config_path = home_path.join("kplayer.json");
 
-    let context = KPAppContext::new(Some(home_path))?;
+    let context = KPAppContext::new(home_path, config_path)?;
     let mut encode_parameter = BTreeMap::new();
     encode_parameter.insert(KPAVMediaType::KPAVMEDIA_TYPE_VIDEO, KPEncodeParameter::default(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO));
     encode_parameter.insert(KPAVMediaType::KPAVMEDIA_TYPE_AUDIO, KPEncodeParameter::default(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO));
-    let mut cmd = KPAppCmd::new(context, encode_parameter)?;
-    cmd.start().await?;
+    let mut app = KPApp::new(context, encode_parameter)?;
+    app.start().await?;
     Ok(())
 }
