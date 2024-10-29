@@ -1,6 +1,8 @@
+use std::ops::Deref;
 use tokio::time::{interval, sleep};
+use url::quirks::protocol;
 use rtmp::session::errors::SessionError;
-use streamhub::define::StreamHubEventSender;
+use streamhub::define::{StreamHubEvent, StreamHubEventSender};
 use streamhub::stream::StreamIdentifier;
 use crate::forward::*;
 
@@ -31,7 +33,7 @@ impl KPForward {
                                 if let BroadcastEvent::Subscribe {
                                     identifier: StreamIdentifier::Rtmp { app_name, stream_name, }, ..
                                 } = event {
-                                    let (source_address, source_app_name, source_stream_name) = KPForward::get_source_url_info(&source_url).unwrap();
+                                    let (source_address, source_app_name, source_stream_name) = KPForward::get_url_info(&source_url).unwrap();
                                     debug!("receive pull event. app_name: {}, stream_name: {}", app_name, stream_name);
 
                                     if source_app_name == app_name && source_stream_name == stream_name {
@@ -60,6 +62,33 @@ impl KPForward {
 
                     self.service.stream_hub.lock().await.set_rtmp_pull_enabled(true);
                 }
+                KPConfig::rtmp_push { name, app_name, stream_name, sink_url, timeout, retry_interval } => {
+                    let target_app_name = app_name;
+                    let target_stream_name = stream_name;
+                    let producer = self.service.stream_hub.lock().await.get_hub_event_sender();
+                    let mut event_consumer = self.service.stream_hub.lock().await.get_client_event_consumer();
+
+                    tokio::spawn(async move {
+                        // wait source stream
+                        loop {
+                            match event_consumer.recv().await.unwrap() {
+                                BroadcastEvent::Publish { identifier } => {
+                                    if let StreamIdentifier::Rtmp { app_name, stream_name } = identifier {
+                                        if app_name == target_app_name && stream_name == target_stream_name {
+                                            break;
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+
+                        KPForward::create_push(producer.clone(), sink_url.clone(), target_app_name, target_stream_name, timeout).await.unwrap();
+                        let s = 1;
+                    });
+
+                    self.service.stream_hub.lock().await.set_rtmp_push_enabled(true);
+                }
                 _ => {}
             }
         }
@@ -67,7 +96,7 @@ impl KPForward {
     }
 
     async fn create_pull(producer: StreamHubEventSender, source_url: &String, app_name: Option<String>, stream_name: Option<String>, timeout: Option<Duration>) -> Result<()> {
-        let (source_address, source_app_name, source_stream_name) = KPForward::get_source_url_info(&source_url)?;
+        let (source_address, source_app_name, source_stream_name) = KPForward::get_url_info(&source_url)?;
 
         let stream = TcpStream::connect(source_address.clone()).await?;
         debug!("connect source url connection. source_url: {}", source_url);
@@ -94,7 +123,35 @@ impl KPForward {
         }
     }
 
-    fn get_source_url_info(source_url: &String) -> Result<(String, String, String)> {
+    async fn create_push(producer: StreamHubEventSender, sink_url: String, app_name: String, stream_name: String, timeout: Option<Duration>) -> Result<()> {
+        let (sink_address, sink_app_name, sink_stream_name) = KPForward::get_url_info(&sink_url)?;
+
+        let stream = TcpStream::connect(sink_address.clone()).await?;
+        debug!("connect sink url connection. source_url: {}", sink_url);
+
+        let mut client_session = ClientSession::new(
+            stream,
+            ClientSessionType::Push,
+            sink_address,
+            sink_app_name.clone(),
+            sink_stream_name.clone(),
+            producer.clone(),
+            0,
+        );
+        client_session.subscribe(app_name, stream_name);
+
+        // set timeout
+        if let Some(t) = timeout {
+            client_session.set_timeout(t);
+            debug!("set client session timeout. timeout: {:?}",t);
+        }
+        match client_session.run().await {
+            Ok(_) => Ok(()),
+            Err(err) => Err(anyhow!("client session failed. error: {}",err))
+        }
+    }
+
+    fn get_url_info(source_url: &String) -> Result<(String, String, String)> {
         let url = Url::parse(source_url.as_str())?;
         if url.scheme() != KPProtocol::Rtmp.to_string() { return Err(anyhow!("can not support forward source protocol. protocol: {}", url.scheme())); };
         let address = {
@@ -145,6 +202,50 @@ async fn test_forward() {
         port: 1935,
         gop_number: 1,
     });
+    let service_arc = Arc::new(service);
+
+    let mut forward = KPForward::new(service_arc.clone());
+    forward.initialize().await.unwrap();
+
+    let mut server = KPServer::new(service_arc.clone());
+    server.initialize().await.unwrap();
+
+    service_arc.wait().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_push() {
+    use crate::init::initialize;
+    initialize();
+
+    let log_notifier = KPLogNotifier::new();
+    let mut service = KPService::new(Arc::new(log_notifier));
+    let producer = service.stream_hub.lock().await.get_hub_event_sender();
+
+    service.append(KPConfig::rtmp_pull {
+        name: "pull".to_string(),
+        source_url: "rtmp://arch.bytelang.com:1935/live/test".to_string(),
+        app_name: None,
+        stream_name: Some("tmp".to_string()),
+        keep_alive: true,
+        timeout: None,
+        retry_interval: None,
+    });
+    service.append(KPConfig::rtmp_push {
+        name: "push".to_string(),
+        app_name: "live".to_string(),
+        stream_name: "tmp".to_string(),
+        sink_url: "rtmp://arch.bytelang.com:1935/live/forward".to_string(),
+        timeout: Some(Duration::from_secs(10)),
+        retry_interval: Some(Duration::from_secs(3)),
+    });
+    service.append(KPConfig::rtmp {
+        name: "main".to_string(),
+        address: IpAddr::from_str("0.0.0.0").unwrap(),
+        port: 1935,
+        gop_number: 0,
+    });
+
     let service_arc = Arc::new(service);
 
     let mut forward = KPForward::new(service_arc.clone());
