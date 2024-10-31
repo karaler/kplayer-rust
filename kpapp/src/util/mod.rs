@@ -12,3 +12,4 @@ pub mod config;
 pub mod module;
 pub mod vars;
 mod common;
+pub mod message;

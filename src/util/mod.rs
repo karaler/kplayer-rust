@@ -1,2 +1,2 @@
 pub mod event;
-pub mod server_notifier;
+pub mod server_event;

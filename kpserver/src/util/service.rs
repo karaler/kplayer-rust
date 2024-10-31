@@ -4,43 +4,25 @@ use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::{broadcast, Mutex};
 use streamhub::notify::Notifier;
 use streamhub::StreamsHub;
+use crate::notify::event_notifier::KPEventNotifier;
 use crate::notify::log_notifier::KPLogNotifier;
+use crate::notify::notifier::KPServerNotifier;
 use crate::util::*;
-use crate::util::status::KPServerMessage;
+use crate::util::message::KPServerMessage;
 
 pub struct KPService {
     pub config: Vec<KPConfig>,
     pub stream_hub: Arc<Mutex<StreamsHub>>,
-    pub message_sender: Sender<KPServerMessage>,
-    pub message_receiver: Receiver<KPServerMessage>,
-}
-
-impl Default for KPService {
-    fn default() -> Self {
-        let log_notifier = KPLogNotifier::new();
-        let (message_sender, message_receiver) = broadcast::channel::<KPServerMessage>(10);
-        KPService {
-            stream_hub: Arc::new(Mutex::new(StreamsHub::new(Some(Arc::new(log_notifier))))),
-            message_sender,
-            message_receiver,
-            config: vec![KPConfig::rtmp {
-                name: "test".to_string(),
-                address: IpAddr::from_str("0.0.0.0").unwrap(),
-                port: 1935,
-                gop_number: 1,
-            }],
-        }
-    }
+    pub notifier: Arc<dyn KPServerNotifier>,
 }
 
 impl KPService {
-    pub fn new(notifier: Arc<dyn Notifier>) -> Self {
-        let (message_sender, message_receiver) = broadcast::channel::<KPServerMessage>(10);
+    pub fn new(notifier: Arc<dyn KPServerNotifier>) -> Self {
+        let event_notifier = KPEventNotifier::new(notifier.clone());
         KPService {
             config: Vec::new(),
-            stream_hub: Arc::new(Mutex::new(StreamsHub::new(Some(notifier)))),
-            message_sender,
-            message_receiver,
+            stream_hub: Arc::new(Mutex::new(StreamsHub::new(Some(Arc::new(event_notifier))))),
+            notifier,
         }
     }
 
@@ -48,11 +30,10 @@ impl KPService {
         self.config.push(cfg)
     }
 
-    pub async fn wait(&self) -> anyhow::Result<()> {
+    pub async fn wait(&self) {
         let stream_hub = self.stream_hub.clone();
         let mut stream_hub = stream_hub.lock().await;
         stream_hub.run().await;
         info!("stream hub end...");
-        Ok(())
     }
 }

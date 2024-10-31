@@ -1,9 +1,11 @@
 use std::env;
+use std::future::Future;
 use std::io::Error;
 use std::net::IpAddr;
 use std::time::Duration;
 use tokio::{join, select};
 use tokio::net::TcpStream;
+use tokio::sync::broadcast::error::RecvError;
 use tokio::time::sleep;
 use hls::errors::HlsError;
 use hls::remuxer::HlsRemuxer;
@@ -24,14 +26,14 @@ impl KPServer {
         }
     }
 
-    pub async fn initialize(&mut self) -> Result<()> {
+    pub async fn initialize(&mut self) {
         let stream_hub = self.service.stream_hub.clone();
-        let message_sender = self.service.message_sender.clone();
+        let notifier = self.service.notifier.clone();
         for cfg in self.service.config.iter().cloned() {
             match cfg {
                 KPConfig::httpflv { name, port } => {
                     let producer = stream_hub.lock().await.get_hub_event_sender();
-                    let msg_sender = message_sender.clone();
+                    let notifier_sender = notifier.clone();
                     let port_clone = port.clone();
                     let name_clone = name.clone();
 
@@ -43,11 +45,11 @@ impl KPServer {
                                 Some(err.to_string())
                             }
                         };
-                        msg_sender.send(KPServerMessage::httpflv_stop { name: name_clone, error }).unwrap();
+                        notifier_sender.notify(&KPServerMessage::HttpflvStop { name: name_clone, error }).await;
                     });
 
                     debug!("http-flv server listen on {}, name: {}", port, name);
-                    message_sender.send(KPServerMessage::httpflv_start { name: name.clone() })?;
+                    notifier.notify(&KPServerMessage::HttpflvStart { name: name.clone() }).await;
                 }
                 KPConfig::hls { name, port } => {
                     let producer = stream_hub.lock().await.get_hub_event_sender();
@@ -55,7 +57,7 @@ impl KPServer {
                     let mut hls_remuxer = HlsRemuxer::new(customer, producer, false);
                     let port_clone = port.clone();
 
-                    let msg_sender_remuxer = message_sender.clone();
+                    let msg_notifier_remuxer = notifier.clone();
                     let name_remuxer_clone = name.clone();
                     tokio::spawn(async move {
                         let error = match hls_remuxer.run().await {
@@ -65,10 +67,11 @@ impl KPServer {
                                 Some(err.to_string())
                             }
                         };
-                        msg_sender_remuxer.send(KPServerMessage::hls_stop { name: name_remuxer_clone, error }).unwrap();
+                        msg_notifier_remuxer.notify(&KPServerMessage::HlsStop { name: name_remuxer_clone, error }).await;
                     });
+                    notifier.notify(&KPServerMessage::HlsStart { name: name.clone() }).await;
 
-                    let msg_sender_server = message_sender.clone();
+                    let msg_notifier_server = notifier.clone();
                     let name_server_clone = name.clone();
                     tokio::spawn(async move {
                         let error = match hls::server::run(port_clone, None).await {
@@ -78,18 +81,18 @@ impl KPServer {
                                 Some(err.to_string())
                             }
                         };
-                        msg_sender_server.send(KPServerMessage::hls_stop { name: name_server_clone, error }).unwrap();
+                        msg_notifier_server.notify(&KPServerMessage::HlsStop { name: name_server_clone, error }).await;
                     });
 
                     stream_hub.lock().await.set_hls_enabled(true);
                     debug!("hls server listen on {},name: {}", port, name);
-                    message_sender.send(KPServerMessage::hls_start { name: name.clone() })?;
+                    notifier.notify(&KPServerMessage::HlsStart { name: name.clone() }).await;
                 }
                 KPConfig::rtmp { name, address, port, gop_number } => {
                     let producer = stream_hub.lock().await.get_hub_event_sender();
                     let bind_address = format!("{}:{}", address, port);
                     let mut rtmp_server = RtmpServer::new(bind_address.clone(), producer, gop_number.clone(), None);
-                    let msg_sender = message_sender.clone();
+                    let msg_notifier = notifier.clone();
                     let name_clone = name.clone();
 
                     tokio::spawn(async move {
@@ -100,31 +103,39 @@ impl KPServer {
                                 Some(err.to_string())
                             }
                         };
-                        msg_sender.send(KPServerMessage::rtmp_stop { name: name_clone, error }).unwrap();
+                        msg_notifier.notify(&KPServerMessage::RtmpStop { name: name_clone, error }).await;
                     });
 
                     debug!("rtmp server listen on {}, name: {}", bind_address, name);
-                    message_sender.send(KPServerMessage::rtmp_start { name: name.clone() })?;
+                    notifier.notify(&KPServerMessage::RtmpStart { name, address, port }).await;
                 }
                 KPConfig::rtmp_pull { name, source_url, app_name, stream_name, keep_alive, timeout, retry_interval } => {
                     let target_app_name = app_name;
                     let target_stream_name = stream_name;
                     let producer = self.service.stream_hub.lock().await.get_hub_event_sender();
                     let mut event_consumer = self.service.stream_hub.lock().await.get_client_event_consumer();
+                    let msg_notifier = notifier.clone();
 
                     tokio::spawn(async move {
                         if !keep_alive {
                             loop {
-                                let event = event_consumer.recv().await.unwrap();
-                                if let BroadcastEvent::Subscribe {
-                                    identifier: StreamIdentifier::Rtmp { app_name, stream_name, }, ..
-                                } = event {
-                                    let (source_address, source_app_name, source_stream_name) = get_url_info(&source_url).unwrap();
-                                    debug!("receive pull event. app_name: {}, stream_name: {}", app_name, stream_name);
+                                match event_consumer.recv().await {
+                                    Ok(event) => {
+                                        if let BroadcastEvent::Subscribe {
+                                            identifier: StreamIdentifier::Rtmp { app_name, stream_name, }, ..
+                                        } = event {
+                                            let (source_address, source_app_name, source_stream_name) = get_url_info(&source_url).unwrap();
+                                            debug!("receive pull event. app_name: {}, stream_name: {}", app_name, stream_name);
 
-                                    if source_app_name == app_name && source_stream_name == stream_name {
-                                        info!("receive pull event, will open source url. source_url: {}, app_name: {}, stream_name: {}", source_address, app_name, stream_name);
-                                        break;
+                                            if source_app_name == app_name && source_stream_name == stream_name {
+                                                info!("receive pull event, will open source url. source_url: {}, app_name: {}, stream_name: {}", source_address, app_name, stream_name);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    Err(err) => {
+                                        msg_notifier.notify(&KPServerMessage::Unknown { name: name.clone(), error: err.to_string() }).await;
+                                        return;
                                     }
                                 }
                             }
@@ -133,16 +144,40 @@ impl KPServer {
                         let mut retry_c = 1usize;
                         loop {
                             let producer = producer.clone();
+
+                            msg_notifier.notify(&KPServerMessage::RtmpPullStart {
+                                name: name.clone(),
+                                source_url: source_url.clone(),
+                                retry_interval: retry_interval.clone(),
+                                retry_count: match retry_interval {
+                                    None => None,
+                                    Some(_) => Some(retry_c.clone()),
+                                },
+                            }).await;
+
                             // connect pull from source
                             if let Err(err) = KPServer::create_pull(producer, &source_url, target_app_name.clone(), target_stream_name.clone(), timeout).await {
                                 error!("rtmp pull failed. source_url: {}, error: {}", source_url, err);
+                                msg_notifier.notify(&KPServerMessage::RtmpPullStop {
+                                    name: name.clone(),
+                                    source: source_url.clone(),
+                                    error: Some(err.to_string()),
+                                }).await;
                             }
 
+                            // reconnect
                             if let Some(d) = retry_interval {
                                 info!("rtmp pull retry on {:?} after reconnect, retry count: {}", d, retry_c);
                                 sleep(d.clone()).await;
                                 retry_c += 1;
-                            } else { break; }
+                            } else {
+                                msg_notifier.notify(&KPServerMessage::RtmpPullStop {
+                                    name: name.clone(),
+                                    source: source_url.clone(),
+                                    error: None,
+                                }).await;
+                                break;
+                            }
                         }
                     });
 
@@ -153,33 +188,53 @@ impl KPServer {
                     let target_stream_name = stream_name;
                     let producer = self.service.stream_hub.lock().await.get_hub_event_sender();
                     let mut event_consumer = self.service.stream_hub.lock().await.get_client_event_consumer();
+                    let msg_notifier = notifier.clone();
 
                     tokio::spawn(async move {
-                        // wait source stream
-                        loop {
-                            match event_consumer.recv().await.unwrap() {
-                                BroadcastEvent::Publish { identifier } => {
-                                    if let StreamIdentifier::Rtmp { app_name, stream_name } = identifier {
-                                        if app_name == target_app_name && stream_name == target_stream_name {
-                                            break;
+                        if let Some(t) = timeout.clone() {
+                            if let Err(err) = tokio::time::timeout(t, async {
+                                while let Ok(event) = event_consumer.recv().await {
+                                    if let BroadcastEvent::Publish { identifier } = event {
+                                        if let StreamIdentifier::Rtmp { app_name, stream_name } = identifier {
+                                            if app_name == target_app_name && stream_name == target_stream_name {
+                                                break;
+                                            }
                                         }
                                     }
                                 }
-                                _ => {}
+                            }).await {
+                                msg_notifier.notify(&KPServerMessage::RtmpPushStop {
+                                    name: name.clone(),
+                                    sink_url: sink_url.clone(),
+                                    error: Some(format!("find source resource timeout, error: {}", err)),
+                                }).await;
                             }
-                        }
+                        };
 
-                        KPServer::create_push(producer.clone(), sink_url.clone(), target_app_name, target_stream_name, timeout).await.unwrap();
-                        let s = 1;
+                        msg_notifier.notify(&KPServerMessage::RtmpPushStart {
+                            name: name.clone(),
+                            sink_url: sink_url.clone(),
+                        }).await;
+
+                        // create push
+                        let error = match KPServer::create_push(producer.clone(), sink_url.clone(), target_app_name, target_stream_name, timeout).await {
+                            Ok(_) => None,
+                            Err(err) => Some(err.to_string()),
+                        };
+
+                        msg_notifier.notify(&KPServerMessage::RtmpPushStop {
+                            name: name.clone(),
+                            sink_url: sink_url.clone(),
+                            error,
+                        }).await;
                     });
 
                     self.service.stream_hub.lock().await.set_rtmp_push_enabled(true);
                 }
             }
         }
-        Ok(())
     }
-    
+
     async fn create_pull(producer: StreamHubEventSender, source_url: &String, app_name: Option<String>, stream_name: Option<String>, timeout: Option<Duration>) -> Result<()> {
         let (source_address, source_app_name, source_stream_name) = get_url_info(&source_url)?;
 
@@ -261,8 +316,8 @@ async fn test_server() {
     let service_arc = Arc::new(service);
 
     let mut server = KPServer::new(service_arc.clone());
-    server.initialize().await.unwrap();
-    service_arc.wait().await.unwrap();
+    server.initialize().await;
+    service_arc.wait().await;
 }
 
 #[tokio::test]
@@ -289,9 +344,9 @@ async fn test_forward() {
     });
     let service_arc = Arc::new(service);
     let mut server = KPServer::new(service_arc.clone());
-    server.initialize().await.unwrap();
+    server.initialize().await;
 
-    service_arc.wait().await.unwrap();
+    service_arc.wait().await;
 }
 
 #[tokio::test]
@@ -328,6 +383,6 @@ async fn test_push() {
 
     let service_arc = Arc::new(service);
     let mut server = KPServer::new(service_arc.clone());
-    server.initialize().await.unwrap();
-    service_arc.wait().await.unwrap();
+    server.initialize().await;
+    service_arc.wait().await;
 }
