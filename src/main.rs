@@ -14,8 +14,6 @@ use kpapp::app::app::KPApp;
 use kpapp::util::context::KPAppContext;
 use kpcodec::util::alias::KPAVMediaType;
 use kpcodec::util::encode_parameter::KPEncodeParameter;
-use kpserver::forward::forward::KPForward;
-use kpserver::notify::log_notifier::KPLogNotifier;
 use kpserver::server::server::KPServer;
 use kpserver::util::service::KPService;
 use crate::init::initialize;
@@ -114,9 +112,6 @@ async fn start_server(sender: Sender<KPEventMessage>, context: KPAppContext) -> 
     });
 
     let service_arc = Arc::new(service);
-    // create forward
-    let mut forward = KPForward::new(service_arc.clone());
-    forward.initialize().await?;
 
     // create server
     let mut server = KPServer::new(service_arc.clone());
