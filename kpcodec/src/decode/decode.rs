@@ -44,6 +44,10 @@ pub struct KPDecode {
     pub(super) position: Duration,
     lead_stream_index: Option<usize>,
     enable_loop_count: usize,
+    loop_latest_pts: i64,
+    loop_latest_dts: i64,
+    loop_gradient_pts: i64,
+    loop_gradient_dts: i64,
 
     // cache
     packet: KPAVPacket,
@@ -126,6 +130,7 @@ impl KPDecode {
             format_context_options,
             open_timeout,
             packet: KPAVPacket::new(),
+            enable_loop: false,
             ..Default::default()
         }
     }
@@ -309,6 +314,13 @@ impl KPDecode {
                 return Err(anyhow!("seek start point failed. error:{:?}", averror!(ret)));
             }
         }
+
+        // flush codec
+        for (_, stream_context) in self.streams.iter() {
+            if !stream_context.codec_context_ptr.is_null() {
+                unsafe { avcodec_flush_buffers(stream_context.codec_context_ptr.get()) };
+            }
+        }
         Ok(())
     }
 
@@ -325,8 +337,15 @@ impl KPDecode {
                 AVERROR_EOF => {
                     // enable loop
                     if self.enable_loop {
+                        if self.start_point.is_none() {
+                            self.start_point = Some(Duration::from_secs(0));
+                        }
                         self.set_point()?;
+
                         self.enable_loop_count += 1;
+                        self.loop_gradient_pts = std::cmp::max(self.loop_latest_pts, self.loop_latest_dts);
+                        self.loop_gradient_dts = std::cmp::max(self.loop_latest_pts, self.loop_latest_dts);
+                        return Ok(());
                     }
 
                     // set eof
@@ -354,6 +373,11 @@ impl KPDecode {
             return Ok(());
         }
 
+        packet.pts += self.loop_gradient_pts;
+        packet.dts += self.loop_gradient_dts;
+        self.loop_latest_pts = packet.pts;
+        self.loop_latest_dts = packet.dts;
+
         // set state
         if packet.stream_index as usize == lead_stream_index {
             let stream_context = self.streams.get(&self.lead_stream_index.unwrap()).unwrap();
@@ -370,7 +394,7 @@ impl KPDecode {
 
         // send to codec
         let stream_context = self.streams.get(&(packet.stream_index as usize)).unwrap();
-        trace!("send packet to codec. index:{}, media_type:{}, pts:{}, dts:{}, size:{}",self.packet.get().stream_index,stream_context.media_type,self.packet.get().pts,self.packet.get().dts, self.packet.get().size);
+        trace!("send packet to codec. position: {:?}, index:{}, media_type:{}, pts:{}, dts:{}, size:{}",self.position,self.packet.get().stream_index,stream_context.media_type,self.packet.get().pts,self.packet.get().dts, self.packet.get().size);
 
         assert!(!stream_context.codec_context_ptr.is_flushed());
         let ret = unsafe { avcodec_send_packet(stream_context.codec_context_ptr.get(), self.packet.get()) };
@@ -431,6 +455,10 @@ impl KPDecode {
     pub fn get_expect_streams(&self) -> &HashMap<KPAVMediaType, Option<usize>> {
         &self.expect_stream_index
     }
+
+    pub fn set_enable_loop(&mut self, enable: bool) {
+        self.enable_loop = enable;
+    }
 }
 
 impl KPDecode {
@@ -466,4 +494,25 @@ fn open_invalid_file() {
     initialize();
     let mut decode = KPDecode::new(env::var("INPUT_INVALID_PATH").unwrap());
     assert!(decode.open().is_err());
+}
+
+#[test]
+fn decode_loop() {
+    initialize();
+    let mut decode = KPDecode::new(env::var("INPUT_SHORT_PATH").unwrap());
+    decode.open().unwrap();
+
+    // set expect stream
+    let mut expect_streams = HashMap::new();
+    expect_streams.insert(KPAVMediaType::from(AVMEDIA_TYPE_VIDEO), None);
+    expect_streams.insert(KPAVMediaType::from(AVMEDIA_TYPE_AUDIO), None);
+    decode.set_expect_stream(expect_streams);
+    decode.find_streams().unwrap();
+    decode.open_codec().unwrap();
+    decode.set_enable_loop(true);
+
+    for get_frame in decode.iter() {
+        let (media_type, frame) = get_frame.unwrap();
+        info!("get frame. {:?}, meida_type: {}", frame, media_type);
+    }
 }

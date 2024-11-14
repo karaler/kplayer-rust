@@ -891,7 +891,7 @@ fn test_mix() -> Result<()> {
     use crate::decode::mix::KPMixCodec;
 
     initialize();
-    let mut mix = KPMixCodec::new(env::var("INPUT_SHORT_PATH")?, env::var("INPUT_SHORT_PATH")?, None);
+    let mut mix = KPMixCodec::new(env::var("INPUT_SHORT_PATH")?, env::var("INPUT_PATH_MP3")?, Some(KPAVMediaType::KPAVMEDIA_TYPE_AUDIO));
 
     // set expect stream
     let mut expect_streams = HashMap::new();

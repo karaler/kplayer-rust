@@ -104,6 +104,13 @@ impl KPMixCodec {
                 expect_streams.insert(media_type.clone(), expect_stream.clone());
                 decode.set_expect_stream(expect_streams);
             }
+
+            // set maintainer loop
+            if let Some(maintainer_media_type) = self.maintainer_source {
+                if maintainer_media_type.ne(media_type) {
+                    decode.set_enable_loop(true);
+                }
+            }
         }
 
         self.status = KPCodecStatus::Opened;
