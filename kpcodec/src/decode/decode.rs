@@ -27,6 +27,9 @@ pub struct KPDecode {
     end_point: Option<Duration>,
     expect_stream_index: HashMap<KPAVMediaType, Option<usize>>,
     encode_hardware: bool,
+    enable_loop: bool,
+    seek: usize,
+    end: usize,
 
     // media information
     format_name: String,
@@ -37,9 +40,10 @@ pub struct KPDecode {
     bit_rate: u64,
 
     // state
-    status: KPCodecStatus,
-    position: Duration,
+    pub(super) status: KPCodecStatus,
+    pub(super) position: Duration,
     lead_stream_index: Option<usize>,
+    enable_loop_count: usize,
 
     // cache
     packet: KPAVPacket,
@@ -50,7 +54,7 @@ pub struct KPDecodeIterator<'a> {
 }
 
 impl<'a> Iterator for KPDecodeIterator<'a> {
-    type Item = (Result<(KPAVMediaType, KPAVFrame)>);
+    type Item = Result<(KPAVMediaType, KPAVFrame)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let decode = &mut self.decode;
@@ -279,14 +283,14 @@ impl KPDecode {
         self.status = KPCodecStatus::Started;
 
         // initial state
-        self.init_point()?;
+        self.set_point()?;
 
         Ok(())
     }
 
     // 1). set lead stream index
     // 2). set start time point
-    fn init_point(&mut self) -> Result<()> {
+    fn set_point(&mut self) -> Result<()> {
         assert!(matches!(self.status, KPCodecStatus::Opened|KPCodecStatus::Started));
         let lead_stream_index = match self.expect_stream_index.get(&KPAVMediaType::from(AVMEDIA_TYPE_VIDEO)) {
             None => self.expect_stream_index.iter().next().unwrap().1.unwrap(),
@@ -311,23 +315,30 @@ impl KPDecode {
     pub fn stream_to_codec(&mut self) -> Result<()> {
         assert_eq!(self.status, KPCodecStatus::Started);
         assert!(self.lead_stream_index.is_some());
-        assert!(unsafe { (*self.packet.get()).buf.is_null() });
+        assert!((*self.packet.get()).buf.is_null());
         let lead_stream_index = self.lead_stream_index.unwrap();
 
         // read a packet
         let ret = unsafe { av_read_frame(self.format_context_ptr.get(), self.packet.get()) };
         if ret < 0 {
-            match ret {
+            return match ret {
                 AVERROR_EOF => {
+                    // enable loop
+                    if self.enable_loop {
+                        self.set_point()?;
+                        self.enable_loop_count += 1;
+                    }
+
+                    // set eof
                     self.status = KPCodecStatus::Ended;
                     for (_, expect_stream_index) in self.expect_stream_index.iter() {
                         let stream_context = self.streams.get_mut(&expect_stream_index.unwrap()).unwrap();
                         stream_context.codec_context_ptr.flush()?;
                     }
-                    return Ok(());
+                    Ok(())
                 }
-                _ => { return Err(anyhow!("stream packet failed. error: {:?}", averror!(ret))); }
-            }
+                _ => { Err(anyhow!("stream packet failed. error: {:?}", averror!(ret))) }
+            };
         }
         let packet = self.packet.get();
 
