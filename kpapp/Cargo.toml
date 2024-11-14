@@ -17,3 +17,4 @@ serde = "1.0.211"
 tokio = { version = "1.40.0", features = ["full"] }
 nanoid = "0.4.0"
 clap = { version = "4.5.20", features = ["env", "cargo"] }
+strum_macros = "0.26.4"

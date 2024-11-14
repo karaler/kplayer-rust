@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::env;
-use std::env::home_dir;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -14,13 +13,12 @@ use kpapp::app::app::KPApp;
 use kpapp::util::context::KPAppContext;
 use kpcodec::util::alias::KPAVMediaType;
 use kpcodec::util::encode_parameter::KPEncodeParameter;
-use kpserver::forward::forward::KPForward;
-use kpserver::notify::log_notifier::KPLogNotifier;
 use kpserver::server::server::KPServer;
 use kpserver::util::service::KPService;
 use crate::init::initialize;
 use crate::util::event::{KPEventLoop, KPEventMessage};
-use crate::util::server_notifier::KPServerNotifier;
+use crate::util::server_event::KPServerEvent;
+use kpserver::util::message::KPServerMessage;
 
 mod init;
 mod util;
@@ -71,19 +69,16 @@ async fn main() {
             let server_context_clone = context.clone();
             let server_sender_clone = event_loop.get_sender();
             tokio::spawn(async move {
-                if let Err(error) = start_server(server_sender_clone.clone(), server_context_clone).await {
-                    server_sender_clone.send(KPEventMessage::server_stop { error }).await.expect("Failed to send start stop message");
-                };
+                start_server(server_sender_clone.clone(), server_context_clone).await
             });
 
             // start transcode
             let transcode_context_clone = context.clone();
             let transcode_sender_clone = event_loop.get_sender();
+            let transcode_broadcast_receiver = event_loop.subscribe();
             tokio::task::spawn_blocking(move || {
                 futures::executor::block_on(async move {
-                    if let Err(error) = start_transcode(transcode_sender_clone.clone(), transcode_context_clone).await {
-                        transcode_sender_clone.send(KPEventMessage::transcode_stop { error }).await.expect("Failed to send start stop message");
-                    }
+                    start_transcode(transcode_sender_clone.clone(), transcode_broadcast_receiver, transcode_context_clone).await
                 });
             });
 
@@ -93,8 +88,8 @@ async fn main() {
     }
 }
 
-async fn start_server(sender: Sender<KPEventMessage>, context: KPAppContext) -> Result<()> {
-    let notifier = KPServerNotifier::new(sender.clone());
+async fn start_server(sender: Sender<KPEventMessage>, context: KPAppContext) {
+    let notifier = KPServerEvent::new(sender.clone());
     let mut service = KPService::new(Arc::new(notifier));
     let output = context.config.output.clone();
 
@@ -108,32 +103,52 @@ async fn start_server(sender: Sender<KPEventMessage>, context: KPAppContext) -> 
     });
     service.append(kpserver::util::config::KPConfig::rtmp {
         name: "core".to_string(),
-        address: IpAddr::from_str("0.0.0.0")?,
+        address: IpAddr::from_str("0.0.0.0").unwrap(),
         port: 1935,
         gop_number: 29,
     });
 
     let service_arc = Arc::new(service);
-    // create forward
-    let mut forward = KPForward::new(service_arc.clone());
-    forward.initialize().await?;
 
     // create server
     let mut server = KPServer::new(service_arc.clone());
-    server.initialize().await?;
-
-    sender.send(KPEventMessage::server_start {}).await?;
-    service_arc.wait().await?;
-    Ok(())
+    server.initialize().await;
+    service_arc.wait().await;
 }
 
-async fn start_transcode(sender: Sender<KPEventMessage>, mut context: KPAppContext) -> Result<()> {
+async fn start_transcode(sender: Sender<KPEventMessage>, mut subscriber: tokio::sync::broadcast::Receiver<KPEventMessage>, mut context: KPAppContext) {
     let mut encode_parameter = BTreeMap::new();
     encode_parameter.insert(KPAVMediaType::KPAVMEDIA_TYPE_VIDEO, KPEncodeParameter::default(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO));
     encode_parameter.insert(KPAVMediaType::KPAVMEDIA_TYPE_AUDIO, KPEncodeParameter::default(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO));
     context.config.output.path = format!("rtmp://127.0.0.1:1935/{}/{}", context.temporarily_server_app, context.config.output.name);
-    let mut app = KPApp::new(context, encode_parameter)?;
-    sender.send(KPEventMessage::transcode_start {}).await?;
 
-    app.start().await
+    while let Ok(e) = subscriber.recv().await {
+        if let KPEventMessage::server(server_msg) = e {
+            if let KPServerMessage::RtmpStart { name, address, port } = server_msg {
+                if name == "core" {
+                    info!("core rtmp server start. name: {}", name);
+                    break;
+                }
+            }
+        }
+    }
+
+    let mut app = match KPApp::new(context, encode_parameter) {
+        Ok(app) => {
+            info!("create transcode app success");
+            app
+        }
+        Err(err) => {
+            error!("create transcode app failed. error: {}", err);
+            return;
+        }
+    };
+    match app.start().await {
+        Ok(_) => {
+            info!("transcode app exit success");
+        }
+        Err(err) => {
+            error!("transcode app exit failed. error: {}", err);
+        }
+    };
 }

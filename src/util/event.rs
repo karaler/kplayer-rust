@@ -1,67 +1,69 @@
-use log::info;
+use std::sync::Arc;
+use log::{info, LevelFilter};
 use tokio::sync::mpsc::{Receiver, Sender};
-use streamhub::define::{PublisherInfo, SubscriberInfo};
-use streamhub::stream::StreamIdentifier;
+use kpapp::util::message::KPAppMessage;
+use kpserver::util::message::KPServerMessage;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum KPEventMessage {
-    server_publish {
-        identifier: StreamIdentifier,
-        info: PublisherInfo,
-    },
-    server_unpublish {
-        identifier: StreamIdentifier,
-        info: PublisherInfo,
-    },
-    server_subscribe {
-        identifier: StreamIdentifier,
-        info: SubscriberInfo,
-    },
-    server_unsubscribe {
-        identifier: StreamIdentifier,
-        info: SubscriberInfo,
-    },
-    server_start {},
-    server_stop {
-        error: anyhow::Error,
-    },
-    transcode_start {},
-    transcode_stop {
-        error: anyhow::Error,
-    },
+    server(KPServerMessage),
+    transcode(KPAppMessage),
 }
 
 pub struct KPEventLoop {
     sender: Sender<KPEventMessage>,
     receiver: Receiver<KPEventMessage>,
+    broadcast_sender: tokio::sync::broadcast::Sender<KPEventMessage>,
+    broadcast_receiver: tokio::sync::broadcast::Receiver<KPEventMessage>,
 }
 impl KPEventLoop {
     pub fn new() -> Self {
         let (sender, receiver) = tokio::sync::mpsc::channel::<KPEventMessage>(100);
-        KPEventLoop { sender, receiver }
+        let (broadcast_sender, broadcast_receiver) = tokio::sync::broadcast::channel::<KPEventMessage>(100);
+        KPEventLoop { sender, receiver, broadcast_sender, broadcast_receiver }
     }
 
     pub fn get_sender(&self) -> Sender<KPEventMessage> {
         self.sender.clone()
     }
 
+    pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<KPEventMessage> {
+        self.broadcast_sender.subscribe()
+    }
+
     pub async fn event_loop(mut self) {
         while let Some(message) = self.receiver.recv().await {
+            // send to broadcast
+            self.broadcast_sender.send(message.clone()).expect("broadcast message failed");
+
+            // consume message
             match message {
-                KPEventMessage::server_publish { identifier, info } => {
-                    info!("Publishing stream with identifier: {:?}, publisher info: {:?}", identifier, info);
+                KPEventMessage::server(msg) => {
+                    let mut default_msg_level = log::Level::Info;
+                    match &msg {
+                        KPServerMessage::RtmpStop { error, .. } => {
+                            if error.is_some() { default_msg_level = log::Level::Error; }
+                        }
+                        KPServerMessage::HttpflvStop { error, .. } => {
+                            if error.is_some() { default_msg_level = log::Level::Error; }
+                        }
+                        KPServerMessage::HlsStop { error, .. } => {
+                            if error.is_some() { default_msg_level = log::Level::Error; }
+                        }
+                        KPServerMessage::RtmpPullStop { error, .. } => {
+                            if error.is_some() { default_msg_level = log::Level::Error; }
+                        }
+                        KPServerMessage::RtmpPushStop { error, .. } => {
+                            if error.is_some() { default_msg_level = log::Level::Error; }
+                        }
+                        KPServerMessage::Unknown { error, .. } => {}
+                        _ => {}
+                    }
+
+                    log::log!(default_msg_level, "{:?}", msg);
                 }
-                KPEventMessage::server_unpublish { identifier, info } => {
-                    info!("Unpublishing stream with identifier: {:?}, publisher info: {:?}", identifier, info);
-                }
-                KPEventMessage::server_subscribe { identifier, info } => {
-                    info!("Playing stream with identifier: {:?}, subscriber info: {:?}", identifier, info);
-                }
-                KPEventMessage::server_unsubscribe { identifier, info } => {
-                    info!("Stopping stream with identifier: {:?}, subscriber info: {:?}", identifier, info);
-                }
-                e => {
-                    info!("Unhandled message: {:?}", e);
+                KPEventMessage::transcode(msg) => {
+                    info!("Received KPAppMessage: {:?}", msg);
                 }
             }
         }
