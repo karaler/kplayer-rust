@@ -7,7 +7,6 @@ use crate::util::alias::KPAVMediaType;
 pub struct KPMixCodec {
     source: HashMap<KPAVMediaType, KPDecode>,
     maintainer_source: Option<KPAVMediaType>,
-    maintainer_position: Option<Duration>,
 
     // options
     expect_stream_index: HashMap<KPAVMediaType, Option<usize>>,
@@ -28,37 +27,29 @@ impl<'a> Iterator for KPMixCodecIterator<'a> {
         let mix = &mut self.mix;
 
         loop {
-            // stream to queue
-            for (media_type, decode) in mix.source.iter_mut() {
-                if decode.status != KPCodecStatus::Started {
+            for (_, decode) in mix.source.iter() {
+                if decode.status == KPCodecStatus::Ended {
                     mix.status = KPCodecStatus::Ended;
                     return None;
                 }
-
-                if mix.maintainer_position.is_none() {
-                    if media_type.ne(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO) {
-                        continue;
-                    }
-                }
-
-                if let Err(err) = decode.stream_to_codec() { return Some(Err(err)); }
-                if media_type.eq(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO) {
-                    mix.maintainer_position = Some(decode.position);
-                } else {
-                    assert!(mix.maintainer_position.is_some());
-                    if decode.position > mix.maintainer_position.unwrap() {
-                        continue;
-                    }
-                }
-
-                return match decode.stream_from_codec() {
-                    Ok(f) => match f {
-                        None => continue,
-                        Some(frame) => Some(Ok(frame))
-                    },
-                    Err(err) => Some(Err(err))
-                };
             }
+            let video_position = mix.source.get_mut(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO).unwrap().position;
+            let audio_position = mix.source.get_mut(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO).unwrap().position;
+
+            let mut decode;
+            if video_position <= audio_position {
+                decode = mix.source.get_mut(&KPAVMediaType::KPAVMEDIA_TYPE_VIDEO).unwrap();
+            } else {
+                decode = mix.source.get_mut(&KPAVMediaType::KPAVMEDIA_TYPE_AUDIO).unwrap();
+            }
+            if let Err(err) = decode.stream_to_codec() { return Some(Err(err)); }
+            return match decode.stream_from_codec() {
+                Ok(f) => match f {
+                    None => continue,
+                    Some(frame) => Some(Ok(frame))
+                },
+                Err(err) => Some(Err(err))
+            };
         }
     }
 }
@@ -92,7 +83,6 @@ impl KPMixCodec {
             maintainer_source,
             expect_stream_index: HashMap::new(),
             encode_hardware: false,
-            maintainer_position: None,
             status: Default::default(),
         }
     }

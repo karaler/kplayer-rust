@@ -357,7 +357,7 @@ impl KPDecode {
         // set state
         if packet.stream_index as usize == lead_stream_index {
             let stream_context = self.streams.get(&self.lead_stream_index.unwrap()).unwrap();
-            self.position = Duration::from_micros(av_q2d(stream_context.time_base.get()) as u64 * packet.pts as u64 + self.start_time.as_micros() as u64);
+            self.position = Duration::from_secs_f64(av_q2d(stream_context.time_base.get()) as f64 * packet.pts as f64 + self.start_time.as_micros() as f64);
         }
 
         // compare end_point
